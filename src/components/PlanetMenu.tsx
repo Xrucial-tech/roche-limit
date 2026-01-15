@@ -1,10 +1,11 @@
 import React from 'react';
-import type { GameState } from '../types';
+import { GameState } from '../types';
 import { isPlanetMineable } from '../hooks/useGameLoop';
 
 interface Props {
   gameState: GameState;
   onDeploy: (id: string) => void;
+  onDeployFighter: (id: string) => void; // NEW
   onRecall: (id: string) => void;
   onAnchor: (id: string) => void;
   onClose: () => void;
@@ -22,25 +23,21 @@ const styles = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     fontWeight: 'bold' as 'bold', fontSize: '12px'
   },
-  iconBox: {
-    display: 'flex', alignItems: 'center', gap: '10px'
-  },
-  indicator: {
-    width: '10px', height: '10px', borderRadius: '2px', display: 'inline-block'
-  },
+  iconBox: { display: 'flex', alignItems: 'center', gap: '10px' },
+  indicator: { width: '10px', height: '10px', borderRadius: '2px', display: 'inline-block' },
   closeBtn: { background: 'none', border: 'none', color: '#64748b', fontSize: '10px', marginTop: '10px', cursor: 'pointer', width: '100%', textTransform: 'uppercase' as 'uppercase' }
 };
 
-export const PlanetMenu: React.FC<Props> = ({ gameState, onDeploy, onRecall, onAnchor, onClose }) => {
+export const PlanetMenu: React.FC<Props> = ({ gameState, onDeploy, onDeployFighter, onRecall, onAnchor, onClose }) => {
   const selectedPlanet = gameState.planets.find(p => p.id === gameState.selectedPlanetId);
   if (!selectedPlanet) return null;
 
-  const idleShips = gameState.ships.filter(s => s.status === 'idle').length;
+  const idleMiners = gameState.ships.filter(s => s.status === 'idle' && s.type === 'miner').length;
+  const idleFighters = gameState.ships.filter(s => s.status === 'idle' && s.type === 'fighter').length;
   
-  // FIX: Removed the second argument (gameState.stars)
   const isMineable = isPlanetMineable(selectedPlanet);
-  
-  const shipHere = gameState.ships.find(s => s.location === selectedPlanet.id && s.status === 'deployed');
+  const shipHere = gameState.ships.find(s => s.location === selectedPlanet.id && s.status === 'deployed' && s.owner === 'player');
+  const enemyHere = gameState.ships.find(s => s.location === selectedPlanet.id && s.status === 'deployed' && s.owner === 'ai');
 
   const title = selectedPlanet.isDebris ? "ASTEROID SCANNER" : selectedPlanet.id.toUpperCase();
   const subTitle = selectedPlanet.isDebris 
@@ -61,22 +58,38 @@ export const PlanetMenu: React.FC<Props> = ({ gameState, onDeploy, onRecall, onA
           <button onClick={() => onRecall(selectedPlanet.id)} disabled={gameState.actionPoints < 1} style={styles.btn}>
               <div style={styles.iconBox}>
                   <div style={{ ...styles.indicator, backgroundColor: '#f59e0b' }}></div>
-                  <span>RECALL MINER</span>
+                  <span>RECALL SHIP</span>
               </div>
               <span>1 AP</span>
           </button>
       ) : (
-          <button 
-              onClick={() => onDeploy(selectedPlanet.id)} 
-              disabled={gameState.actionPoints < 1 || idleShips === 0 || !isMineable} 
-              style={{...styles.btn, opacity: (gameState.actionPoints < 1 || idleShips === 0 || !isMineable) ? 0.5 : 1}}
-          >
-              <div style={styles.iconBox}>
-                  <div style={{ ...styles.indicator, backgroundColor: '#10b981' }}></div>
-                  <span>DEPLOY MINER</span>
-              </div>
-              <span>1 AP</span>
-          </button>
+          <>
+            <button 
+                onClick={() => onDeploy(selectedPlanet.id)} 
+                disabled={gameState.actionPoints < 1 || idleMiners === 0 || !isMineable} 
+                style={{...styles.btn, opacity: (gameState.actionPoints < 1 || idleMiners === 0 || !isMineable) ? 0.5 : 1}}
+            >
+                <div style={styles.iconBox}>
+                    <div style={{ ...styles.indicator, backgroundColor: '#10b981' }}></div>
+                    <span>DEPLOY MINER</span>
+                </div>
+                <span>1 AP</span>
+            </button>
+
+            {enemyHere && (
+                <button 
+                    onClick={() => onDeployFighter(selectedPlanet.id)} 
+                    disabled={gameState.actionPoints < 1 || idleFighters === 0} 
+                    style={{...styles.btn, opacity: (gameState.actionPoints < 1 || idleFighters === 0) ? 0.5 : 1, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)'}}
+                >
+                    <div style={styles.iconBox}>
+                        <div style={{ ...styles.indicator, backgroundColor: '#ef4444' }}></div>
+                        <span>DEPLOY STARSHIP (COMBAT)</span>
+                    </div>
+                    <span>1 AP</span>
+                </button>
+            )}
+          </>
       )}
 
       {!selectedPlanet.isDebris && (

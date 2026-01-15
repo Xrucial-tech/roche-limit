@@ -7,10 +7,23 @@ import { useGameLoop } from './hooks/useGameLoop';
 function App() {
   const { 
     gameState, selectPlanet, toggleAnchor, buildArkPart, commitTurn, 
-    deployMiner, recallMiner, restartGame, closeReport 
+    deployMiner, deployFighter, recallMiner, restartGame, closeReport, buildMiner, buildFighter
   } = useGameLoop();
 
   const [showArkMenu, setShowArkMenu] = useState(false);
+
+  // Helper for Game Over Messages
+  const getEndTitle = () => {
+      if (gameState.endReason === 'player_victory') return "MISSION ACCOMPLISHED";
+      if (gameState.endReason === 'ai_victory') return "MISSION FAILED";
+      return "TOTAL ANNIHILATION";
+  };
+
+  const getEndDesc = () => {
+      if (gameState.endReason === 'player_victory') return "The Ark has successfully launched.";
+      if (gameState.endReason === 'ai_victory') return "The AI has escaped. We are left behind.";
+      return "The Singularity has consumed us all.";
+  };
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#000', position: 'relative' }}>
@@ -18,6 +31,8 @@ function App() {
         gameState={gameState} 
         onCommit={commitTurn} 
         onBuildArk={buildArkPart}
+        onBuildMiner={buildMiner}
+        onBuildFighter={buildFighter}
         showArk={showArkMenu}
         setShowArk={setShowArkMenu}
       />
@@ -28,6 +43,7 @@ function App() {
         <PlanetMenu 
             gameState={gameState}
             onDeploy={deployMiner}
+            onDeployFighter={deployFighter}
             onRecall={recallMiner}
             onAnchor={toggleAnchor}
             onClose={() => selectPlanet(null)}
@@ -61,10 +77,10 @@ function App() {
           justifyContent: 'center', alignItems: 'center', zIndex: 200, color: 'white'
         }}>
             <h1 style={{ fontSize: '60px', color: gameState.phase === 'victory' ? '#4ade80' : '#ef4444', margin: 0 }}>
-              {gameState.phase === 'victory' ? "MISSION ACCOMPLISHED" : "MISSION FAILED"}
+              {getEndTitle()}
             </h1>
             <p style={{ fontSize: '20px', color: '#94a3b8' }}>
-              {gameState.phase === 'victory' ? "The Ark has successfully launched." : "The Singularity has consumed us."}
+              {getEndDesc()}
             </p>
             <button onClick={restartGame} style={{
               marginTop: '20px', padding: '15px 40px', fontSize: '18px', backgroundColor: 'white',

@@ -186,7 +186,23 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
                   const startY = ship.status === 'traveling_out' ? startBase.y : dest.y;
                   const endX = ship.status === 'traveling_out' ? dest.x : startBase.x;
                   const endY = ship.status === 'traveling_out' ? dest.y : startBase.y;
-                  return <circle key={ship.id} cx={lerp(startX, endX, t)} cy={lerp(startY, endY, t)} r={2} fill={ship.owner === 'player' ? 'white' : '#ef4444'} />;
+                  
+                  const curX = lerp(startX, endX, t);
+                  const curY = lerp(startY, endY, t);
+
+                  // RENDER FIGHTERS AS TRIANGLES
+                  if (ship.type === 'fighter') {
+                      return (
+                          <polygon 
+                              key={ship.id} 
+                              points={`${curX},${curY-4} ${curX+3},${curY+3} ${curX-3},${curY+3}`} 
+                              fill={ship.owner === 'player' ? '#c084fc' : '#ef4444'} 
+                          />
+                      );
+                  }
+
+                  // RENDER MINERS AS CIRCLES
+                  return <circle key={ship.id} cx={curX} cy={curY} r={2} fill={ship.owner === 'player' ? 'white' : '#ef4444'} />;
               }
           }
           return null;

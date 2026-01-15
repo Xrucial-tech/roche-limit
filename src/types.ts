@@ -26,7 +26,7 @@ export interface Planet {
 export interface Ship {
   id: string;
   owner: 'player' | 'ai'; 
-  type: 'miner';
+  type: 'miner' | 'fighter'; // NEW: Added fighter type
   status: 'idle' | 'traveling_out' | 'deployed' | 'traveling_back';
   location: string | null;
   travelProgress: number; 
@@ -36,6 +36,7 @@ export interface GameState {
   turn: number;
   maxTurns: number;
   phase: 'planning' | 'resolving' | 'results' | 'game_over' | 'victory' | 'defeat';
+  endReason: 'ai_victory' | 'singularity' | 'player_victory' | null; // NEW
   actionPoints: number;
   stars: Star[];
   planets: Planet[];
@@ -53,7 +54,5 @@ export interface GameState {
   gameMessage: string;
   log: string[];
   turnReport: string[] | null;
-  
-  // NEW: Tracks if the Singularity has formed
   isMerged: boolean; 
 }

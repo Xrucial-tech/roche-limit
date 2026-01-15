@@ -15,8 +15,10 @@ export const processAI = (gameState: GameState, planets: Planet[], currentShips:
 
     // --- DECISION 1: BUILD MINERS ---
     // AI Strategy: Aggressively expand fleet up to 8 ships if resources allow
-    const aiShips = nextShips.filter(s => s.owner === 'ai');
-    if (nextResources.fuel >= MINER_COST.fuel && nextResources.biomass >= MINER_COST.biomass && aiShips.length < 8) {
+    // FIX: Filter specifically for miners
+    const aiMiners = nextShips.filter(s => s.owner === 'ai' && s.type === 'miner');
+    
+    if (nextResources.fuel >= MINER_COST.fuel && nextResources.biomass >= MINER_COST.biomass && aiMiners.length < 8) {
         // Pay Cost
         nextResources.fuel -= MINER_COST.fuel;
         nextResources.biomass -= MINER_COST.biomass;
@@ -25,7 +27,7 @@ export const processAI = (gameState: GameState, planets: Planet[], currentShips:
         nextShips.push({
             id: `ai-${Date.now()}-${Math.random()}`,
             owner: 'ai',
-            type: 'miner',
+            type: 'miner', // FIX: Explicitly set type
             status: 'idle',
             location: null,
             travelProgress: 0
@@ -34,20 +36,21 @@ export const processAI = (gameState: GameState, planets: Planet[], currentShips:
 
     // --- DECISION 2: DEPLOY FLEET ---
     // AI Strategy: Find safe, rich planets near its base (Beta Star)
-    const idleMiners = nextShips.filter(s => s.owner === 'ai' && s.status === 'idle');
+    // FIX: Only use idle MINERS
+    const idleMiners = nextShips.filter(s => s.owner === 'ai' && s.status === 'idle' && s.type === 'miner');
     
     idleMiners.forEach(miner => {
         // Find a target:
         // 1. Must be orbiting Beta (AI Home)
         // 2. Not destroyed or debris
         // 3. Not unstable (AI plays it safe)
-        // 4. No other ship is already there
+        // 4. No other ship owned by AI is already there
         const target = planets.find(p => 
             p.parentStarId === 'beta' && 
             !p.destroyed && 
             !p.isDebris && 
             !p.isUnstable && 
-            !nextShips.find(s => s.location === p.id)
+            !nextShips.find(s => s.location === p.id && s.owner === 'ai')
         );
 
         if (target) {
