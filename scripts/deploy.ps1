@@ -24,3 +24,5 @@ npm run deploy
 
 Write-Host "DEPLOYMENT COMPLETE!" -ForegroundColor Green
 Write-Host "Your game will be live in ~2 minutes at: https://Xrucial-tech.github.io/roche-limit" -ForegroundColor Gray
+Write-Host ""
+Read-Host "Press Enter to return to terminal..."
