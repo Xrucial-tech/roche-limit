@@ -1,5 +1,5 @@
 import React from 'react';
-import { GameState } from '../types';
+import type { GameState } from '../types';
 
 const getPosition = (cx: number, cy: number, radius: number, angle: number) => {
   const rad = (angle * Math.PI) / 180;
@@ -16,7 +16,6 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
   const alpha = gameState.stars.find(s => s.id === 'alpha')!;
   const beta = gameState.stars.find(s => s.id === 'beta')!;
   
-  // If merged, everything centers on (600,400)
   const pBasePos = gameState.isMerged 
       ? getPosition(600, 400, gameState.starbase.orbitRadius, gameState.starbase.angle)
       : getPosition(alpha.position.x, alpha.position.y, gameState.starbase.orbitRadius, gameState.starbase.angle);
@@ -26,8 +25,6 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
       : getPosition(beta.position.x, beta.position.y, gameState.aiStarbase.orbitRadius, gameState.aiStarbase.angle);
 
   const starDist = Math.abs(beta.position.x - alpha.position.x);
-
-  // Fusion Logic
   const mergeFactor = Math.max(0, (400 - starDist) / 300); 
   const purpleRadius = 40 + (mergeFactor * 40);
 
@@ -43,7 +40,6 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
   return (
     <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, backgroundColor: '#020617' }} viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" onClick={() => onSelectPlanet(null)}>
       
-      {/* 0. GRAVITY WELL */}
       <defs>
         <radialGradient id="gravityWell" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
             <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.15" />
@@ -64,18 +60,33 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
         </filter>
       </defs>
 
-      {/* 1. SINGULARITY (If Merged) */}
+      <path d={rochePath} fill="url(#gravityWell)" stroke="#6366f1" strokeWidth="2" strokeDasharray="10 10" opacity={0.3}>
+          <animate attributeName="stroke-dashoffset" from="0" to="20" dur="2s" repeatCount="indefinite" />
+      </path>
+
+      {/* LAYER 1: ORBIT RINGS (Drawn FIRST so they go under stars) */}
+      {gameState.planets.map(planet => {
+        if (planet.destroyed && !planet.isDebris) return null;
+        const parent = gameState.stars.find(s => s.id === planet.parentStarId)!;
+        let cx = parent.position.x;
+        let cy = parent.position.y;
+        if (gameState.isMerged) { cx = 600; cy = 400; }
+
+        return (
+            <circle key={`ring-${planet.id}`} cx={cx} cy={cy} r={planet.orbitRadius} fill="none" stroke={planet.parentStarId === 'alpha' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)'} strokeWidth="1" />
+        );
+      })}
+
+      {/* LAYER 2: STARS (Opaque, will cover rings) */}
       {gameState.isMerged ? (
           <g>
-              <circle cx={600} cy={400} r={100} fill="url(#purpleCore)" filter="url(#glow)">
-                  <animate attributeName="r" values="90;110;90" dur="2s" repeatCount="indefinite" />
+              <circle cx={600} cy={400} r={purpleRadius + 60} fill="url(#purpleCore)" filter="url(#glow)">
+                  <animate attributeName="r" values={`${purpleRadius + 50};${purpleRadius + 70};${purpleRadius + 50}`} dur="2s" repeatCount="indefinite" />
                   <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" repeatCount="indefinite" />
               </circle>
-              {/* White Hot Center */}
               <circle cx={600} cy={400} r={40} fill="white" />
           </g>
       ) : (
-          // 2. NORMAL STARS (If NOT Merged)
           gameState.stars.map(star => (
             <g key={star.id} transform={`rotate(${star.currentAngle}, ${star.position.x}, ${star.position.y})`}>
               <circle cx={star.position.x} cy={star.position.y} r={star.deathRadius} fill={star.color} opacity="0.1" />
@@ -87,7 +98,7 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
           ))
       )}
 
-      {/* 3. BASES */}
+      {/* LAYER 3: BASES */}
       <circle cx={gameState.isMerged ? 600 : alpha.position.x} cy={gameState.isMerged ? 400 : alpha.position.y} r={gameState.starbase.orbitRadius} fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="10 5" opacity="0.3" />
       <g transform={`translate(${pBasePos.x}, ${pBasePos.y})`}>
           <rect x="-8" y="-8" width="16" height="16" fill="#1e293b" stroke="#94a3b8" strokeWidth="2" />
@@ -100,30 +111,25 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
           <text x="-15" y="-15" fill="#fca5a5" fontSize="8">ENEMY</text>
       </g>
 
-      {/* 4. PLANETS */}
+      {/* LAYER 4: PLANET BODIES (Drawn ON TOP of stars) */}
       {gameState.planets.map(planet => {
+        if (planet.destroyed && !planet.isDebris) return null;
+
         const parent = gameState.stars.find(s => s.id === planet.parentStarId)!;
-        
         let cx = parent.position.x;
         let cy = parent.position.y;
         if (gameState.isMerged) { cx = 600; cy = 400; }
-
         const pos = getPosition(cx, cy, planet.orbitRadius, planet.angle);
-        
-        if (planet.destroyed && !planet.isDebris) return null;
 
         let color = '#fbbf24'; 
         if (planet.resourceType === 'fuel') color = '#f97316'; 
         if (planet.resourceType === 'biomass') color = '#4ade80';
         if (planet.resourceType === 'exotic') color = '#c084fc'; 
 
-        return (
-          <g key={planet.id}>
-            <circle cx={cx} cy={cy} r={planet.orbitRadius} fill="none" stroke={planet.parentStarId === 'alpha' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)'} strokeWidth="1" />
-
-            {planet.isDebris ? (
-                 // --- FIX: ADDED CLICK HANDLER TO DEBRIS GROUP ---
+        if (planet.isDebris) {
+             return (
                  <g 
+                    key={planet.id}
                     transform={`translate(${pos.x}, ${pos.y})`}
                     onClick={(e) => { e.stopPropagation(); onSelectPlanet(planet.id); }}
                     style={{ cursor: 'pointer' }}
@@ -132,56 +138,49 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
                      <circle r={2} cx={-4} cy={3} fill="#9ca3af" />
                      <circle r={3} cx={4} cy={-2} fill="#6b7280" />
                      <circle r={1} cx={0} cy={5} fill="#9ca3af" />
-                     
-                     {/* Show Ship on Debris if mining */}
                      {gameState.ships.map(s => {
-                        if(s.location === planet.id && s.status === 'deployed') {
-                            return <circle key={s.id} cx={0} cy={-8} r={2} fill={s.owner === 'player' ? '#10b981' : '#ef4444'} />
-                        }
+                        if(s.location === planet.id && s.status === 'deployed') return <circle key={s.id} cx={0} cy={-8} r={2} fill={s.owner === 'player' ? '#10b981' : '#ef4444'} />
                         return null;
                     })}
                  </g>
-            ) : (
-                <g onClick={(e) => { e.stopPropagation(); onSelectPlanet(planet.id); }} style={{ cursor: 'pointer', transition: 'all 0.5s' }}>
-                    {planet.isUnstable && (
-                        <circle cx={pos.x} cy={pos.y} r={12} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.8">
-                           <animate attributeName="r" values="12;16;12" dur="0.8s" repeatCount="indefinite" />
-                           <animate attributeName="opacity" values="0.8;0;0.8" dur="0.8s" repeatCount="indefinite" />
-                        </circle>
-                    )}
-                    {gameState.selectedPlanetId === planet.id && (
-                        <circle cx={pos.x} cy={pos.y} r={16} fill="none" stroke="white" strokeDasharray="4 2" strokeWidth="2">
-                        <animateTransform attributeName="transform" type="rotate" from={`0 ${pos.x} ${pos.y}`} to={`360 ${pos.x} ${pos.y}`} dur="6s" repeatCount="indefinite"/>
-                        </circle>
-                    )}
-                    <circle cx={pos.x} cy={pos.y} r={4} fill={color} stroke={planet.isAnchored ? "cyan" : "rgba(255,255,255,0.3)"} strokeWidth={planet.isAnchored ? 2 : 0.5} />
-                    {gameState.ships.map(s => {
-                        if(s.location === planet.id && s.status === 'deployed') {
-                            return <circle key={s.id} cx={pos.x} cy={pos.y - 8} r={2} fill={s.owner === 'player' ? '#10b981' : '#ef4444'} />
-                        }
-                        return null;
-                    })}
-                </g>
-            )}
+            );
+        }
+
+        return (
+          <g key={planet.id} onClick={(e) => { e.stopPropagation(); onSelectPlanet(planet.id); }} style={{ cursor: 'pointer', transition: 'all 0.5s' }}>
+              {planet.isUnstable && (
+                  <circle cx={pos.x} cy={pos.y} r={12} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.8">
+                     <animate attributeName="r" values="12;16;12" dur="0.8s" repeatCount="indefinite" />
+                     <animate attributeName="opacity" values="0.8;0;0.8" dur="0.8s" repeatCount="indefinite" />
+                  </circle>
+              )}
+              {gameState.selectedPlanetId === planet.id && (
+                  <circle cx={pos.x} cy={pos.y} r={16} fill="none" stroke="white" strokeDasharray="4 2" strokeWidth="2">
+                  <animateTransform attributeName="transform" type="rotate" from={`0 ${pos.x} ${pos.y}`} to={`360 ${pos.x} ${pos.y}`} dur="6s" repeatCount="indefinite"/>
+                  </circle>
+              )}
+              <circle cx={pos.x} cy={pos.y} r={4} fill={color} stroke={planet.isAnchored ? "cyan" : "rgba(255,255,255,0.3)"} strokeWidth={planet.isAnchored ? 2 : 0.5} />
+              {gameState.ships.map(s => {
+                  if(s.location === planet.id && s.status === 'deployed') {
+                      return <circle key={s.id} cx={pos.x} cy={pos.y - 8} r={2} fill={s.owner === 'player' ? '#10b981' : '#ef4444'} />
+                  }
+                  return null;
+              })}
           </g>
         );
       })}
 
-      {/* 5. SHIPS */}
+      {/* LAYER 5: SHIPS (Travelling) */}
       {gameState.ships.map(ship => {
           if ((ship.status === 'traveling_out' || ship.status === 'traveling_back') && ship.location) {
               const planet = gameState.planets.find(p => p.id === ship.location);
               if (planet) {
                   const parent = gameState.stars.find(s => s.id === planet.parentStarId)!;
-                  
                   let startBase = ship.owner === 'player' ? pBasePos : aiBasePos;
-                  
                   let destCx = parent.position.x;
                   let destCy = parent.position.y;
                   if (gameState.isMerged) { destCx = 600; destCy = 400; }
-                  
                   const dest = getPosition(destCx, destCy, planet.orbitRadius, planet.angle);
-                  
                   const t = ship.travelProgress / 100;
                   const startX = ship.status === 'traveling_out' ? startBase.x : dest.x;
                   const startY = ship.status === 'traveling_out' ? startBase.y : dest.y;

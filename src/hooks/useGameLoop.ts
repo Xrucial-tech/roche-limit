@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import type { GameState, Planet, Star, Ship } from '../types';
+import type { GameState, Planet, Star } from '../types';
 import { processAI } from '../logic/aiLogic';
 
 const MAX_TURNS = 100;
@@ -10,7 +10,15 @@ const MINING_RATE = 10;
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 const toDeg = (rad: number) => (rad * 180) / Math.PI;
 
-const getAbsolutePos = (planet: Planet, stars: Star[]) => {
+const getAbsolutePos = (planet: Planet, stars: Star[], isMerged: boolean) => {
+    if (isMerged) {
+        const rad = toRad(planet.angle);
+        return {
+            x: 600 + planet.orbitRadius * Math.cos(rad),
+            y: 400 + planet.orbitRadius * Math.sin(rad)
+        };
+    }
+
     const parent = stars.find(s => s.id === planet.parentStarId);
     if (!parent) return { x: -9999, y: -9999 };
     const rad = toRad(planet.angle);
@@ -29,7 +37,7 @@ const isInFluxZone = (x: number, y: number, stars: Star[]) => {
     return d1 + d2 < dist * 1.15;
 };
 
-export const isPlanetMineable = (planet: Planet, stars: Star[]) => {
+export const isPlanetMineable = (planet: Planet) => {
   return !planet.destroyed; 
 };
 
@@ -51,7 +59,7 @@ const generatePlanets = (stars: Star[]): Planet[] => {
               const direction = star.id === 'alpha' ? -1 : 1;
               const speed = rawSpeed * direction;
               const typeProb = Math.random();
-              let rType: any = 'fuel';
+              let rType: 'fuel' | 'biomass' | 'exotic' = 'fuel';
               if (typeProb > 0.4) rType = 'biomass';
               if (typeProb > 0.8) rType = 'exotic';
 
@@ -67,10 +75,10 @@ const generatePlanets = (stars: Star[]): Planet[] => {
                   isUnstable: false,
                   isDebris: false
               };
-              const pos1 = getAbsolutePos(tempPlanet, stars);
+              const pos1 = getAbsolutePos(tempPlanet, stars, false);
               let collision = false;
               for (const p of planets) {
-                  const pos2 = getAbsolutePos(p, stars);
+                  const pos2 = getAbsolutePos(p, stars, false);
                   const d = Math.hypot(pos1.x - pos2.x, pos1.y - pos2.y);
                   if (d < 30) collision = true; 
               }
@@ -114,16 +122,39 @@ const INITIAL_STATE: GameState = {
 
 export const useGameLoop = () => {
   const [gameState, setGameState] = useState<GameState>(INITIAL_STATE);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number>(0);
 
-  // Actions
+  const buildArkPart = (part: 'engines' | 'lifeSupport' | 'warpCore') => setGameState(prev => { 
+      if (prev.actionPoints < 1 || prev.ark[part] >= 100) return prev; 
+      
+      const costs: Record<string, {r: 'fuel' | 'biomass' | 'exotic', v: number}> = { 
+          engines: {r:'fuel', v:20}, 
+          lifeSupport: {r:'biomass', v:20}, 
+          warpCore: {r:'exotic', v:10} 
+      }; 
+      
+      const cost = costs[part]; 
+      
+      if (prev.resources[cost.r] < cost.v) return { ...prev, gameMessage: "Insufficient Resources" }; 
+      
+      const newRes = { ...prev.resources }; 
+      newRes[cost.r] -= cost.v; 
+      
+      const newArk = { ...prev.ark }; 
+      newArk[part] += 20; 
+      
+      let phase = prev.phase; 
+      if (newArk.engines >= 100 && newArk.lifeSupport >= 100 && newArk.warpCore >= 100) phase = 'victory'; 
+      
+      return { ...prev, resources: newRes, ark: newArk, phase: phase, actionPoints: prev.actionPoints - 1 }; 
+  });
+
   const buildMiner = () => setGameState(prev => { if (prev.resources.fuel < MINER_COST.fuel || prev.resources.biomass < MINER_COST.biomass) return { ...prev, gameMessage: "Insufficient resources." }; return { ...prev, resources: { ...prev.resources, fuel: prev.resources.fuel - MINER_COST.fuel, biomass: prev.resources.biomass - MINER_COST.biomass }, ships: [...prev.ships, { id: `m-${Date.now()}`, owner: 'player', type: 'miner', status: 'idle', location: null, travelProgress: 0 }], gameMessage: "Miner Constructed." }; });
   const deployMiner = (planetId: string) => setGameState(prev => { if (prev.actionPoints < 1) return { ...prev, gameMessage: "Not enough AP." }; const idleShip = prev.ships.find(s => s.status === 'idle' && s.owner === 'player'); if (!idleShip) return { ...prev, gameMessage: "No idle miners." }; return { ...prev, ships: prev.ships.map(s => s.id === idleShip.id ? { ...s, status: 'traveling_out', location: planetId, travelProgress: 0 } : s), actionPoints: prev.actionPoints - 1, selectedPlanetId: null, gameMessage: `Miner ${idleShip.id} launching...` }; });
   const recallMiner = (planetId: string) => setGameState(prev => { if (prev.actionPoints < 1) return { ...prev, gameMessage: "Not enough AP." }; const ship = prev.ships.find(s => s.location === planetId && s.status === 'deployed' && s.owner === 'player'); if (!ship) return prev; return { ...prev, ships: prev.ships.map(s => s.id === ship.id ? { ...s, status: 'traveling_back', location: planetId, travelProgress: 0 } : s), actionPoints: prev.actionPoints - 1, selectedPlanetId: null, gameMessage: `Miner ${ship.id} recalled.` }; });
   const selectPlanet = (id: string | null) => { if (gameState.phase !== 'resolving') setGameState(prev => ({ ...prev, selectedPlanetId: id })); };
   const toggleAnchor = (planetId: string) => setGameState(prev => { if (prev.actionPoints < 1) return prev; return { ...prev, actionPoints: prev.actionPoints - 1, planets: prev.planets.map(p => p.id === planetId ? { ...p, isAnchored: !p.isAnchored } : p) }; }); 
   const closeReport = () => setGameState(prev => ({ ...prev, phase: 'planning', turnReport: null }));
-  const buildArkPart = (part: 'engines' | 'lifeSupport' | 'warpCore') => setGameState(prev => { if (prev.actionPoints < 1 || prev.ark[part] >= 100) return prev; const costs = { engines: {r:'fuel', v:20}, lifeSupport: {r:'biomass', v:20}, warpCore: {r:'exotic', v:10} }; const cost = costs[part]; /* @ts-ignore */ if (prev.resources[cost.r] < cost.v) return { ...prev, gameMessage: "Insufficient Resources" }; const newRes = { ...prev.resources }; /* @ts-ignore */ newRes[cost.r] -= cost.v; const newArk = { ...prev.ark }; newArk[part] += 20; let phase = prev.phase; if (newArk.engines >= 100 && newArk.lifeSupport >= 100 && newArk.warpCore >= 100) phase = 'victory'; return { ...prev, resources: newRes, ark: newArk, phase: phase, actionPoints: prev.actionPoints - 1 }; });
 
   const commitTurn = () => {
     if (gameState.phase !== 'planning') return;
@@ -138,6 +169,7 @@ export const useGameLoop = () => {
       setGameState(prev => {
         if (frames >= maxFrames) {
             cancelAnimationFrame(animationRef.current!);
+            
             const finalShips = prev.ships.map(ship => {
                 if (ship.status === 'traveling_out' && ship.travelProgress >= 100) return { ...ship, status: 'deployed' as const, travelProgress: 0 };
                 if (ship.status === 'traveling_back' && ship.travelProgress >= 100) return { ...ship, status: 'idle' as const, location: null, travelProgress: 0 };
@@ -173,10 +205,10 @@ export const useGameLoop = () => {
         const currentDist = newStars[1].position.x - newStars[0].position.x;
         let isMerged = prev.isMerged;
 
-        // MERGER LOGIC
         if (!isMerged) {
             if (currentDist > 20) {
-                const moveSpeed = 0.01; 
+                // FIX: Speed increased from 0.01 to 0.05
+                const moveSpeed = 0.05; 
                 newStars[0].position.x += moveSpeed;
                 newStars[1].position.x -= moveSpeed;
             } else {
@@ -193,7 +225,6 @@ export const useGameLoop = () => {
             return ship;
         });
 
-        // PLANET PHYSICS
         newPlanets = newPlanets.map(planet => {
           if (planet.destroyed && !planet.isDebris) return planet;
           let parent = newStars.find(s => s.id === planet.parentStarId)!;
@@ -241,10 +272,9 @@ export const useGameLoop = () => {
               }
           }
 
-          // 3. CHECK COLLISION WITH STARS (UPDATED FOR LOGGING)
+          // 3. COLLISION
           const effectiveParent = newStars.find(s => s.id === finalParentId)!;
           const finalRad = toRad(finalAngle);
-          // Recalculate exact position after all movement logic
           const finalX = isMerged 
                 ? 600 + finalOrbitRadius * Math.cos(finalRad)
                 : effectiveParent.position.x + finalOrbitRadius * Math.cos(finalRad);
@@ -256,14 +286,12 @@ export const useGameLoop = () => {
           let deathMsg = "";
 
           if (isMerged) {
-              // SINGULARITY DEATH
               const distToCenter = Math.hypot(finalX - 600, finalY - 400);
-              if (distToCenter < 100) { // Purple Star Radius
+              if (distToCenter < 100) { 
                   isVaporized = true;
                   deathMsg = `CATASTROPHIC: ${planet.id} consumed by Singularity!`;
               }
           } else {
-              // NORMAL STAR DEATH
               for (const star of newStars) {
                   const distToStar = Math.hypot(finalX - star.position.x, finalY - star.position.y);
                   if (distToStar < star.deathRadius) {
@@ -291,7 +319,6 @@ export const useGameLoop = () => {
           };
         });
 
-        // OBJECT COLLISIONS
         for (let i = 0; i < newPlanets.length; i++) {
             for (let j = i + 1; j < newPlanets.length; j++) {
                 const p1 = newPlanets[i];

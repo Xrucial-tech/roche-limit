@@ -36,7 +36,10 @@ export const PlanetMenu: React.FC<Props> = ({ gameState, onDeploy, onRecall, onA
   if (!selectedPlanet) return null;
 
   const idleShips = gameState.ships.filter(s => s.status === 'idle').length;
-  const isMineable = isPlanetMineable(selectedPlanet, gameState.stars);
+  
+  // FIX: Removed the second argument (gameState.stars)
+  const isMineable = isPlanetMineable(selectedPlanet);
+  
   const shipHere = gameState.ships.find(s => s.location === selectedPlanet.id && s.status === 'deployed');
 
   const title = selectedPlanet.isDebris ? "ASTEROID SCANNER" : selectedPlanet.id.toUpperCase();
