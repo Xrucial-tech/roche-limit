@@ -11,8 +11,8 @@ Write-Host "--> Staging changes..." -ForegroundColor Yellow
 git add .
 
 # 3. Commit changes
-Write-Host "--> Committing: '$commitMsg'..." -ForegroundColor Yellow
-git commit -m "$commitMsg"
+Write-Host "--> Committing: "$commitMsg"..." -ForegroundColor Yellow
+git commit -m $commitMsg
 
 # 4. Push to GitHub Main branch
 Write-Host "--> Pushing source code to GitHub..." -ForegroundColor Yellow
@@ -22,5 +22,5 @@ git push origin main
 Write-Host "--> Building and Deploying to GitHub Pages..." -ForegroundColor Magenta
 npm run deploy
 
-Write-Host "`n? DEPLOYMENT COMPLETE!" -ForegroundColor Green
+Write-Host "DEPLOYMENT COMPLETE!" -ForegroundColor Green
 Write-Host "Your game will be live in ~2 minutes at: https://Xrucial-tech.github.io/roche-limit" -ForegroundColor Gray
