@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
-import type { GameState, Planet, Star, Ship } from '../types';
+import type { GameState, Planet, Star } from '../types';
 import { processAI } from '../logic/aiLogic';
 
-const MAX_TURNS = 100;
+const MAX_TURNS = 55;
 const MAX_AP = 5;
 const MINER_COST = { fuel: 10, biomass: 10 };
 const FIGHTER_COST = { fuel: 20, exotic: 10 }; // Expensive combat unit
@@ -281,7 +281,7 @@ export const useGameLoop = () => {
                 newStars[1].position.x -= moveSpeed;
             } else {
                 isMerged = true;
-                turnEvents.push("SINGULARITY FORMED: GRAVITY IS DESTABILIZED!");
+                turnEvents.push("STELLAR COLLISION CONFIRMED: GRAVITY IS DESTABILIZED!");
             }
         }
         newStars[0].currentAngle = (newStars[0].currentAngle + newStars[0].rotationSpeed) % 360;
@@ -351,7 +351,7 @@ export const useGameLoop = () => {
               const distToCenter = Math.hypot(finalX - 600, finalY - 400);
               if (distToCenter < 100) { 
                   isVaporized = true;
-                  deathMsg = `CATASTROPHIC: ${planet.id} consumed by Singularity!`;
+                  deathMsg = `CATASTROPHIC: ${planet.id} consumed by Supernova!`;
               }
           } else {
               for (const star of newStars) {

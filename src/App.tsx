@@ -22,7 +22,7 @@ function App() {
   const getEndDesc = () => {
       if (gameState.endReason === 'player_victory') return "The Ark has successfully launched.";
       if (gameState.endReason === 'ai_victory') return "The AI has escaped. We are left behind.";
-      return "The Singularity has consumed us all.";
+      return "The Stellar Collision has consumed us all.";
   };
 
   return (

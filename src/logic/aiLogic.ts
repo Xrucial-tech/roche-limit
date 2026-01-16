@@ -1,75 +1,80 @@
 import type { GameState, Planet, Ship } from '../types';
 
-// Helper to calculate cost (Same as player for now)
 const MINER_COST = { fuel: 10, biomass: 10 };
+const FIGHTER_COST = { fuel: 20, exotic: 10 }; // Expensive but deadly
 
-/**
- * The AI Brain.
- * Analyzes the galaxy and returns updated Resources, Ark Progress, and Fleet Orders.
- */
 export const processAI = (gameState: GameState, planets: Planet[], currentShips: Ship[]) => {
-    // 1. Clone mutable data to avoid side-effects
     let nextShips = [...currentShips];
     let nextResources = { ...gameState.aiResources };
     let nextArk = { ...gameState.aiArk };
 
-    // --- DECISION 1: BUILD MINERS ---
-    // AI Strategy: Aggressively expand fleet up to 8 ships if resources allow
-    // FIX: Filter specifically for miners
-    const aiMiners = nextShips.filter(s => s.owner === 'ai' && s.type === 'miner');
+    // --- DECISION 1: BUILD SHIPS (Mixed Fleet) ---
+    const aiShips = nextShips.filter(s => s.owner === 'ai');
     
-    if (nextResources.fuel >= MINER_COST.fuel && nextResources.biomass >= MINER_COST.biomass && aiMiners.length < 8) {
-        // Pay Cost
+    // Strategy: Maintain a ratio of 1 Fighter for every 3 Miners
+    const numMiners = aiShips.filter(s => s.type === 'miner').length;
+    const numFighters = aiShips.filter(s => s.type === 'fighter').length;
+    
+    // 1a. Build Fighter if we have resources and need protection
+    if (nextResources.fuel >= FIGHTER_COST.fuel && nextResources.exotic >= FIGHTER_COST.exotic && numFighters < Math.ceil(numMiners / 3)) {
+        nextResources.fuel -= FIGHTER_COST.fuel;
+        nextResources.exotic -= FIGHTER_COST.exotic;
+        nextShips.push({
+            id: `ai-f-${Date.now()}-${Math.random()}`,
+            owner: 'ai',
+            type: 'fighter',
+            status: 'idle',
+            location: null,
+            travelProgress: 0
+        });
+    }
+    // 1b. Build Miner if we are low on fleet
+    else if (nextResources.fuel >= MINER_COST.fuel && nextResources.biomass >= MINER_COST.biomass && aiShips.length < 8) {
         nextResources.fuel -= MINER_COST.fuel;
         nextResources.biomass -= MINER_COST.biomass;
-        
-        // Add Ship
         nextShips.push({
-            id: `ai-${Date.now()}-${Math.random()}`,
+            id: `ai-m-${Date.now()}-${Math.random()}`,
             owner: 'ai',
-            type: 'miner', // FIX: Explicitly set type
+            type: 'miner',
             status: 'idle',
             location: null,
             travelProgress: 0
         });
     }
 
-    // --- DECISION 2: DEPLOY FLEET ---
-    // AI Strategy: Find safe, rich planets near its base (Beta Star)
-    // FIX: Only use idle MINERS
+    // --- DECISION 2: DEPLOY MINERS ---
     const idleMiners = nextShips.filter(s => s.owner === 'ai' && s.status === 'idle' && s.type === 'miner');
-    
     idleMiners.forEach(miner => {
-        // Find a target:
-        // 1. Must be orbiting Beta (AI Home)
-        // 2. Not destroyed or debris
-        // 3. Not unstable (AI plays it safe)
-        // 4. No other ship owned by AI is already there
         const target = planets.find(p => 
-            p.parentStarId === 'beta' && 
-            !p.destroyed && 
-            !p.isDebris && 
-            !p.isUnstable && 
+            p.parentStarId === 'beta' && !p.destroyed && !p.isDebris && !p.isUnstable && 
             !nextShips.find(s => s.location === p.id && s.owner === 'ai')
         );
-
         if (target) {
-            // Deploy miner
             miner.status = 'traveling_out';
             miner.location = target.id;
             miner.travelProgress = 0;
         }
     });
 
-    // --- DECISION 3: CONSTRUCT ARK ---
-    // AI Strategy: Randomly build parts if it has excess resources (>20)
-    // It prioritizes Engines first, then the rest.
-    
-    // Check if we can afford a build (Cost 20/20 or 10 exotic)
+    // --- DECISION 3: DEPLOY FIGHTERS (HUNTER KILLER) ---
+    const idleFighters = nextShips.filter(s => s.owner === 'ai' && s.status === 'idle' && s.type === 'fighter');
+    idleFighters.forEach(fighter => {
+        // Find a planet where the PLAYER has a ship
+        const target = planets.find(p => 
+            !p.destroyed && 
+            nextShips.some(s => s.location === p.id && s.owner === 'player' && s.status === 'deployed')
+        );
+
+        if (target) {
+            fighter.status = 'traveling_out';
+            fighter.location = target.id;
+            fighter.travelProgress = 0;
+        }
+    });
+
+    // --- DECISION 4: CONSTRUCT ARK ---
     if (nextResources.fuel >= 20 && nextResources.biomass >= 20) {
         const parts: ('engines' | 'lifeSupport' | 'warpCore')[] = ['engines', 'lifeSupport', 'warpCore'];
-        
-        // Simple heuristic: Try to build the lowest progress part
         parts.sort((a, b) => nextArk[a] - nextArk[b]);
         const targetPart = parts[0];
 
@@ -80,10 +85,5 @@ export const processAI = (gameState: GameState, planets: Planet[], currentShips:
         }
     }
 
-    // Return the updated state deltas
-    return {
-        resources: nextResources,
-        ark: nextArk,
-        ships: nextShips
-    };
+    return { resources: nextResources, ark: nextArk, ships: nextShips };
 };
