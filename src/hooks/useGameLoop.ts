@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import type { GameState, Planet, Star, Explosion } from '../types';
+import type { GameState, Planet, Star } from '../types'; // FIX: Removed unused 'Explosion'
 import { processAI } from '../logic/aiLogic';
 
 const MAX_TURNS = 55;
@@ -265,17 +265,13 @@ export const useGameLoop = () => {
                 if (ship.status === 'traveling_out' && !isMerged) {
                     const planet = newPlanets.find(p => p.id === ship.location);
                     if (planet) {
-                        // Is this cross-system travel? (Player @ Alpha -> Target @ Beta)
                         const isPlayer = ship.owner === 'player';
                         const isCrossSystem = (isPlayer && planet.parentStarId === 'beta') || (!isPlayer && planet.parentStarId === 'alpha');
                         
                         if (isCrossSystem) {
-                            // 0.5% chance per frame to fail
                             if (Math.random() < 0.005) {
                                 ship.status = 'traveling_back';
-                                // Invert progress to seamlessly return from current spot
                                 ship.travelProgress = 100 - ship.travelProgress;
-                                
                                 const msg = `GRAVITY SHEAR: ${ship.owner === 'player' ? 'Your' : 'Enemy'} ${ship.type.toUpperCase()} forced to retreat!`;
                                 if (!turnEvents.includes(msg)) turnEvents.push(msg);
                             }
