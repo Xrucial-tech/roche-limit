@@ -5,7 +5,27 @@ const getPosition = (cx: number, cy: number, radius: number, angle: number) => {
   const rad = (angle * Math.PI) / 180;
   return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
 };
-const lerp = (start: number, end: number, t: number) => start + (end - start) * t;
+
+// HELPER: Quadratic Bezier for Curved Paths
+// Calculates a point on a curve between start and end, bending based on current progress
+const getCurvedPos = (start: {x:number, y:number}, end: {x:number, y:number}, t: number) => {
+    // Control point calculation: Offset from midpoint
+    const mx = (start.x + end.x) / 2;
+    const my = (start.y + end.y) / 2;
+    
+    // Simple offset: arc "up" relative to the map center (600,400)
+    // If we are crossing the center, we want to arc around it.
+    // Let's bias the curve away from y=400 to avoid stars.
+    const cy = my < 400 ? my - 100 : my + 100;
+    const cx = mx;
+
+    // Bezier formula: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+    const oneMinusT = 1 - t;
+    const x = oneMinusT * oneMinusT * start.x + 2 * oneMinusT * t * cx + t * t * end.x;
+    const y = oneMinusT * oneMinusT * start.y + 2 * oneMinusT * t * cy + t * t * end.y;
+    
+    return { x, y };
+};
 
 interface Props {
   gameState: GameState;
@@ -64,7 +84,7 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
           <animate attributeName="stroke-dashoffset" from="0" to="20" dur="2s" repeatCount="indefinite" />
       </path>
 
-      {/* LAYER 1: ORBIT RINGS (Drawn FIRST so they go under stars) */}
+      {/* LAYER 1: ORBIT RINGS */}
       {gameState.planets.map(planet => {
         if (planet.destroyed && !planet.isDebris) return null;
         const parent = gameState.stars.find(s => s.id === planet.parentStarId)!;
@@ -77,7 +97,7 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
         );
       })}
 
-      {/* LAYER 2: STARS (Opaque, will cover rings) */}
+      {/* LAYER 2: STARS */}
       {gameState.isMerged ? (
           <g>
               <circle cx={600} cy={400} r={purpleRadius + 60} fill="url(#purpleCore)" filter="url(#glow)">
@@ -111,7 +131,7 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
           <text x="-15" y="-15" fill="#fca5a5" fontSize="8">ENEMY</text>
       </g>
 
-      {/* LAYER 4: PLANET BODIES (Drawn ON TOP of stars) */}
+      {/* LAYER 4: PLANET BODIES */}
       {gameState.planets.map(planet => {
         if (planet.destroyed && !planet.isDebris) return null;
 
@@ -170,7 +190,7 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
         );
       })}
 
-      {/* LAYER 5: SHIPS (Travelling) */}
+      {/* LAYER 5: SHIPS (Curved Flight) */}
       {gameState.ships.map(ship => {
           if ((ship.status === 'traveling_out' || ship.status === 'traveling_back') && ship.location) {
               const planet = gameState.planets.find(p => p.id === ship.location);
@@ -182,31 +202,42 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
                   if (gameState.isMerged) { destCx = 600; destCy = 400; }
                   const dest = getPosition(destCx, destCy, planet.orbitRadius, planet.angle);
                   const t = ship.travelProgress / 100;
+                  
                   const startX = ship.status === 'traveling_out' ? startBase.x : dest.x;
                   const startY = ship.status === 'traveling_out' ? startBase.y : dest.y;
                   const endX = ship.status === 'traveling_out' ? dest.x : startBase.x;
                   const endY = ship.status === 'traveling_out' ? dest.y : startBase.y;
                   
-                  const curX = lerp(startX, endX, t);
-                  const curY = lerp(startY, endY, t);
+                  // Use new Curved Calculation
+                  const curPos = getCurvedPos({x: startX, y: startY}, {x: endX, y: endY}, t);
 
-                  // RENDER FIGHTERS AS TRIANGLES
                   if (ship.type === 'fighter') {
                       return (
                           <polygon 
                               key={ship.id} 
-                              points={`${curX},${curY-4} ${curX+3},${curY+3} ${curX-3},${curY+3}`} 
+                              points={`${curPos.x},${curPos.y-4} ${curPos.x+3},${curPos.y+3} ${curPos.x-3},${curPos.y+3}`} 
                               fill={ship.owner === 'player' ? '#c084fc' : '#ef4444'} 
                           />
                       );
                   }
-
-                  // RENDER MINERS AS CIRCLES
-                  return <circle key={ship.id} cx={curX} cy={curY} r={2} fill={ship.owner === 'player' ? 'white' : '#ef4444'} />;
+                  return <circle key={ship.id} cx={curPos.x} cy={curPos.y} r={2} fill={ship.owner === 'player' ? 'white' : '#ef4444'} />;
               }
           }
           return null;
       })}
+
+      {/* LAYER 6: EXPLOSIONS */}
+      {gameState.explosions.map(exp => (
+          <circle 
+            key={exp.id} 
+            cx={exp.x} 
+            cy={exp.y} 
+            r={exp.radius} 
+            fill={exp.color} 
+            opacity={exp.opacity} 
+          />
+      ))}
+
     </svg>
   );
 };

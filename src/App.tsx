@@ -7,12 +7,11 @@ import { useGameLoop } from './hooks/useGameLoop';
 function App() {
   const { 
     gameState, selectPlanet, toggleAnchor, buildArkPart, commitTurn, 
-    deployMiner, deployFighter, recallMiner, restartGame, closeReport, buildMiner, buildFighter
+    deployMiner, deployFighter, warpShip, recallMiner, restartGame, closeReport, buildMiner, buildFighter
   } = useGameLoop();
 
   const [showArkMenu, setShowArkMenu] = useState(false);
 
-  // Helper for Game Over Messages
   const getEndTitle = () => {
       if (gameState.endReason === 'player_victory') return "MISSION ACCOMPLISHED";
       if (gameState.endReason === 'ai_victory') return "MISSION FAILED";
@@ -44,6 +43,7 @@ function App() {
             gameState={gameState}
             onDeploy={deployMiner}
             onDeployFighter={deployFighter}
+            onWarp={warpShip} // NEW
             onRecall={recallMiner}
             onAnchor={toggleAnchor}
             onClose={() => selectPlanet(null)}

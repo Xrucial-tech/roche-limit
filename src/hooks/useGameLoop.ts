@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
-import type { GameState, Planet, Star } from '../types';
+import type { GameState, Planet, Star, Explosion } from '../types';
 import { processAI } from '../logic/aiLogic';
 
 const MAX_TURNS = 55;
 const MAX_AP = 5;
 const MINER_COST = { fuel: 10, biomass: 10 };
-const FIGHTER_COST = { fuel: 20, exotic: 10 }; // Expensive combat unit
+const FIGHTER_COST = { fuel: 20, exotic: 10 }; 
+const WARP_COST = 50; 
 const MINING_RATE = 10;
 
 const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -111,6 +112,7 @@ const getInitialState = (): GameState => {
             { id: 'm-1', owner: 'player', type: 'miner', status: 'idle', location: null, travelProgress: 0 },
             { id: 'ai-1', owner: 'ai', type: 'miner', status: 'idle', location: null, travelProgress: 0 }
         ],
+        explosions: [],
         stars: stars,
         planets: generatePlanets(stars)
     };
@@ -138,7 +140,6 @@ export const useGameLoop = () => {
       return { ...prev, resources: { ...prev.resources, fuel: prev.resources.fuel - MINER_COST.fuel, biomass: prev.resources.biomass - MINER_COST.biomass }, ships: [...prev.ships, { id: `m-${Date.now()}`, owner: 'player', type: 'miner', status: 'idle', location: null, travelProgress: 0 }], gameMessage: "Miner Constructed." }; 
   });
 
-  // NEW: Build Fighter
   const buildFighter = () => setGameState(prev => {
       if (prev.resources.fuel < FIGHTER_COST.fuel || prev.resources.exotic < FIGHTER_COST.exotic) return { ...prev, gameMessage: "Insufficient resources." };
       return { 
@@ -156,12 +157,28 @@ export const useGameLoop = () => {
       return { ...prev, ships: prev.ships.map(s => s.id === idleShip.id ? { ...s, status: 'traveling_out', location: planetId, travelProgress: 0 } : s), actionPoints: prev.actionPoints - 1, selectedPlanetId: null, gameMessage: `Miner ${idleShip.id} launching...` }; 
   });
 
-  // NEW: Deploy Fighter (Combat)
   const deployFighter = (planetId: string) => setGameState(prev => {
       if (prev.actionPoints < 1) return { ...prev, gameMessage: "Not enough AP." };
       const idleShip = prev.ships.find(s => s.status === 'idle' && s.owner === 'player' && s.type === 'fighter');
       if (!idleShip) return { ...prev, gameMessage: "No idle Starships." };
       return { ...prev, ships: prev.ships.map(s => s.id === idleShip.id ? { ...s, status: 'traveling_out', location: planetId, travelProgress: 0 } : s), actionPoints: prev.actionPoints - 1, selectedPlanetId: null, gameMessage: `Starship engaging target...` };
+  });
+
+  const warpShip = (planetId: string, shipType: 'miner' | 'fighter') => setGameState(prev => {
+      if (prev.actionPoints < 2) return { ...prev, gameMessage: "Not enough AP (Needs 2)." };
+      if (prev.resources.fuel < WARP_COST) return { ...prev, gameMessage: "Insufficient Fuel for Warp." };
+      
+      const idleShip = prev.ships.find(s => s.status === 'idle' && s.owner === 'player' && s.type === shipType);
+      if (!idleShip) return { ...prev, gameMessage: `No idle ${shipType} available for Warp.` };
+
+      return {
+          ...prev,
+          resources: { ...prev.resources, fuel: prev.resources.fuel - WARP_COST },
+          actionPoints: prev.actionPoints - 2,
+          ships: prev.ships.map(s => s.id === idleShip.id ? { ...s, status: 'deployed', location: planetId, travelProgress: 100 } : s),
+          selectedPlanetId: null,
+          gameMessage: "WARP JUMP SUCCESSFUL."
+      };
   });
 
   const recallMiner = (planetId: string) => setGameState(prev => { 
@@ -189,7 +206,6 @@ export const useGameLoop = () => {
         if (frames >= maxFrames) {
             cancelAnimationFrame(animationRef.current!);
             
-            // Finalize Turn Logic
             const finalShips = prev.ships.map(ship => {
                 if (ship.status === 'traveling_out' && ship.travelProgress >= 100) return { ...ship, status: 'deployed' as const, travelProgress: 0 };
                 if (ship.status === 'traveling_back' && ship.travelProgress >= 100) return { ...ship, status: 'idle' as const, location: null, travelProgress: 0 };
@@ -200,7 +216,6 @@ export const useGameLoop = () => {
             let newAiRes = { ...prev.aiResources };
             
             finalShips.forEach(ship => {
-                // Mining Logic
                 if (ship.status === 'deployed' && ship.location && ship.type === 'miner') {
                     const planet = prev.planets.find(p => p.id === ship.location);
                     if (planet && !planet.destroyed) {
@@ -212,21 +227,17 @@ export const useGameLoop = () => {
                 }
             });
 
-            // GAME OVER CHECKS
             let nextPhase = prev.phase;
             let nextReason = prev.endReason;
 
-            // 1. AI Victory Check
             if (prev.aiArk.engines >= 100 && prev.aiArk.lifeSupport >= 100 && prev.aiArk.warpCore >= 100) {
                 nextPhase = 'defeat';
                 nextReason = 'ai_victory';
             } 
-            // 2. Singularity / Time Limit Check
             else if (prev.turn >= prev.maxTurns) {
                 nextPhase = 'game_over';
                 nextReason = 'singularity';
             } 
-            // 3. Continue
             else {
                 nextPhase = 'results';
             }
@@ -234,25 +245,46 @@ export const useGameLoop = () => {
             return { 
                 ...prev, ships: finalShips, resources: newRes, aiResources: newAiRes, 
                 turnReport: turnEvents, phase: nextPhase, endReason: nextReason,
-                turn: prev.turn + 1, actionPoints: MAX_AP, selectedPlanetId: null, gameMessage: "Turn Complete." 
+                turn: prev.turn + 1, actionPoints: MAX_AP, selectedPlanetId: null, gameMessage: "Turn Complete.",
+                explosions: [] 
             };
         }
 
-        // --- ANIMATION LOOP ---
         let newStars = prev.stars.map(s => ({ ...s, position: { ...s.position } }));
-        // Clone ships for mutation in loop
         let newShips = prev.ships.map(s => ({ ...s }));
         let newPlanets = [...prev.planets];
         let isMerged = prev.isMerged;
+        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.02 })).filter(e => e.opacity > 0);
 
         // 1. Move Ships
         newShips.forEach(ship => {
             if (ship.status === 'traveling_out' || ship.status === 'traveling_back') {
                 ship.travelProgress = Math.min(ship.travelProgress + 0.5, 100);
                 
-                // COMBAT LOGIC: Fighter Arrival
+                // --- FLUX FIELD CHECK (Gravity Shear) ---
+                if (ship.status === 'traveling_out' && !isMerged) {
+                    const planet = newPlanets.find(p => p.id === ship.location);
+                    if (planet) {
+                        // Is this cross-system travel? (Player @ Alpha -> Target @ Beta)
+                        const isPlayer = ship.owner === 'player';
+                        const isCrossSystem = (isPlayer && planet.parentStarId === 'beta') || (!isPlayer && planet.parentStarId === 'alpha');
+                        
+                        if (isCrossSystem) {
+                            // 0.5% chance per frame to fail
+                            if (Math.random() < 0.005) {
+                                ship.status = 'traveling_back';
+                                // Invert progress to seamlessly return from current spot
+                                ship.travelProgress = 100 - ship.travelProgress;
+                                
+                                const msg = `GRAVITY SHEAR: ${ship.owner === 'player' ? 'Your' : 'Enemy'} ${ship.type.toUpperCase()} forced to retreat!`;
+                                if (!turnEvents.includes(msg)) turnEvents.push(msg);
+                            }
+                        }
+                    }
+                }
+
+                // COMBAT LOGIC
                 if (ship.type === 'fighter' && ship.status === 'traveling_out' && ship.travelProgress >= 100) {
-                    // Look for enemies on this planet
                     const targets = newShips.filter(target => 
                         target.location === ship.location && 
                         target.status === 'deployed' && 
@@ -260,19 +292,22 @@ export const useGameLoop = () => {
                     );
                     
                     targets.forEach(target => {
-                        // Mark target as dead (filter out later)
                         target.id = "DESTROYED"; 
                         const msg = `COMBAT: Fighter ${ship.id} destroyed ${target.owner.toUpperCase()} ${target.type}`;
                         if (!turnEvents.includes(msg)) turnEvents.push(msg);
+                        
+                        const planet = newPlanets.find(p => p.id === ship.location);
+                        if (planet) {
+                            const pos = getAbsolutePos(planet, newStars, isMerged);
+                            newExplosions.push({ id: `exp-${Math.random()}`, x: pos.x, y: pos.y, radius: 5, opacity: 1, color: '#ef4444' });
+                        }
                     });
                 }
             }
         });
         
-        // Remove destroyed ships
         newShips = newShips.filter(s => s.id !== "DESTROYED");
 
-        // 2. Star Physics (Movement)
         const currentDist = newStars[1].position.x - newStars[0].position.x;
         if (!isMerged) {
             if (currentDist > 20) {
@@ -287,7 +322,6 @@ export const useGameLoop = () => {
         newStars[0].currentAngle = (newStars[0].currentAngle + newStars[0].rotationSpeed) % 360;
         newStars[1].currentAngle = (newStars[1].currentAngle + newStars[1].rotationSpeed) % 360;
 
-        // 3. Planet Physics
         newPlanets = newPlanets.map(planet => {
           if (planet.destroyed && !planet.isDebris) return planet;
           let parent = newStars.find(s => s.id === planet.parentStarId)!;
@@ -334,7 +368,6 @@ export const useGameLoop = () => {
               }
           }
 
-          // Collision Check
           const effectiveParent = newStars.find(s => s.id === finalParentId)!;
           const finalRad = toRad(finalAngle);
           const finalX = isMerged 
@@ -367,7 +400,7 @@ export const useGameLoop = () => {
 
           if (isVaporized) {
              if (!planet.destroyed) turnEvents.push(deathMsg);
-             // Kill ships on planet
+             newExplosions.push({ id: `exp-p-${planet.id}`, x: finalX, y: finalY, radius: 10, opacity: 1, color: '#f59e0b' });
              newShips = newShips.filter(s => s.location !== planet.id);
              return { ...planet, destroyed: true, isDebris: false }; 
           }
@@ -382,7 +415,6 @@ export const useGameLoop = () => {
           };
         });
 
-        // Object Collisions
         for (let i = 0; i < newPlanets.length; i++) {
             for (let j = i + 1; j < newPlanets.length; j++) {
                 const p1 = newPlanets[i];
@@ -401,7 +433,7 @@ export const useGameLoop = () => {
                 }
             }
         }
-        return { ...prev, stars: newStars, planets: newPlanets, ships: newShips, isMerged };
+        return { ...prev, stars: newStars, planets: newPlanets, ships: newShips, isMerged, explosions: newExplosions };
       });
       frames++;
       if (frames < maxFrames) animationRef.current = requestAnimationFrame(animate);
@@ -411,5 +443,5 @@ export const useGameLoop = () => {
   
   const restartGame = () => setGameState(getInitialState());
   
-  return { gameState, selectPlanet, toggleAnchor, buildArkPart, commitTurn, buildMiner, buildFighter, deployMiner, deployFighter, recallMiner, restartGame, closeReport };
+  return { gameState, selectPlanet, toggleAnchor, buildArkPart, commitTurn, buildMiner, buildFighter, deployMiner, deployFighter, warpShip, recallMiner, restartGame, closeReport };
 };

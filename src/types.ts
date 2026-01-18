@@ -26,21 +26,32 @@ export interface Planet {
 export interface Ship {
   id: string;
   owner: 'player' | 'ai'; 
-  type: 'miner' | 'fighter'; // NEW: Added fighter type
+  type: 'miner' | 'fighter';
   status: 'idle' | 'traveling_out' | 'deployed' | 'traveling_back';
   location: string | null;
   travelProgress: number; 
+}
+
+// NEW: Explosion Effect Type
+export interface Explosion {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  opacity: number;
+  color: string;
 }
 
 export interface GameState {
   turn: number;
   maxTurns: number;
   phase: 'planning' | 'resolving' | 'results' | 'game_over' | 'victory' | 'defeat';
-  endReason: 'ai_victory' | 'singularity' | 'player_victory' | null; // NEW
+  endReason: 'ai_victory' | 'singularity' | 'player_victory' | null;
   actionPoints: number;
   stars: Star[];
   planets: Planet[];
   ships: Ship[];
+  explosions: Explosion[]; // NEW
   starbase: { position: Point; orbitRadius: number; angle: number; parentStarId: string }; 
   aiStarbase: { position: Point; orbitRadius: number; angle: number; parentStarId: string };
   
