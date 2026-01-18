@@ -269,7 +269,7 @@ export const useGameLoop = () => {
                         const isCrossSystem = (isPlayer && planet.parentStarId === 'beta') || (!isPlayer && planet.parentStarId === 'alpha');
                         
                         if (isCrossSystem) {
-                            if (Math.random() < 0.005) {
+                            if (Math.random() < 0.010) {
                                 ship.status = 'traveling_back';
                                 ship.travelProgress = 100 - ship.travelProgress;
                                 const msg = `GRAVITY SHEAR: ${ship.owner === 'player' ? 'Your' : 'Enemy'} ${ship.type.toUpperCase()} forced to retreat!`;

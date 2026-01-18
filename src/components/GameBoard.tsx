@@ -6,20 +6,30 @@ const getPosition = (cx: number, cy: number, radius: number, angle: number) => {
   return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
 };
 
-// HELPER: Quadratic Bezier for Curved Paths
-// Calculates a point on a curve between start and end, bending based on current progress
-const getCurvedPos = (start: {x:number, y:number}, end: {x:number, y:number}, t: number) => {
-    // Control point calculation: Offset from midpoint
+// IMPROVED: Curve respects the Star's center (Orbital Arc)
+const getCurvedPos = (
+    start: {x:number, y:number}, 
+    end: {x:number, y:number}, 
+    starCenter: {x:number, y:number}, 
+    t: number
+) => {
+    // Midpoint between start and destination
     const mx = (start.x + end.x) / 2;
     const my = (start.y + end.y) / 2;
     
-    // Simple offset: arc "up" relative to the map center (600,400)
-    // If we are crossing the center, we want to arc around it.
-    // Let's bias the curve away from y=400 to avoid stars.
-    const cy = my < 400 ? my - 100 : my + 100;
-    const cx = mx;
+    // Calculate vector from Star to Midpoint
+    const dx = mx - starCenter.x;
+    const dy = my - starCenter.y;
+    
+    // Normalize and scale it to push the arc OUTWARD (away from star)
+    // The visual "height" of the arc depends on the distance
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const arcHeight = 100; // How far to bend the curve
+    
+    const cx = mx + (dx / dist) * arcHeight;
+    const cy = my + (dy / dist) * arcHeight;
 
-    // Bezier formula: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+    // Quadratic Bezier: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
     const oneMinusT = 1 - t;
     const x = oneMinusT * oneMinusT * start.x + 2 * oneMinusT * t * cx + t * t * end.x;
     const y = oneMinusT * oneMinusT * start.y + 2 * oneMinusT * t * cy + t * t * end.y;
@@ -197,19 +207,27 @@ export const GameBoard: React.FC<Props> = ({ gameState, onSelectPlanet }) => {
               if (planet) {
                   const parent = gameState.stars.find(s => s.id === planet.parentStarId)!;
                   let startBase = ship.owner === 'player' ? pBasePos : aiBasePos;
+                  
+                  // Destination Coordinates
                   let destCx = parent.position.x;
                   let destCy = parent.position.y;
                   if (gameState.isMerged) { destCx = 600; destCy = 400; }
                   const dest = getPosition(destCx, destCy, planet.orbitRadius, planet.angle);
-                  const t = ship.travelProgress / 100;
                   
+                  // Animation Progress
+                  const t = ship.travelProgress / 100;
                   const startX = ship.status === 'traveling_out' ? startBase.x : dest.x;
                   const startY = ship.status === 'traveling_out' ? startBase.y : dest.y;
                   const endX = ship.status === 'traveling_out' ? dest.x : startBase.x;
                   const endY = ship.status === 'traveling_out' ? dest.y : startBase.y;
                   
-                  // Use new Curved Calculation
-                  const curPos = getCurvedPos({x: startX, y: startY}, {x: endX, y: endY}, t);
+                  // NEW: Pass the star center to curve around
+                  const curPos = getCurvedPos(
+                      {x: startX, y: startY}, 
+                      {x: endX, y: endY}, 
+                      {x: destCx, y: destCy}, 
+                      t
+                  );
 
                   if (ship.type === 'fighter') {
                       return (
