@@ -32,11 +32,6 @@ const generatePlanets = (stars: Star[]): Planet[] => {
           const vx = -(Math.sin(angle)) * speed * direction;
           const vy = (Math.cos(angle)) * speed * direction;
 
-          const typeProb = Math.random();
-          let rType: 'fuel' | 'biomass' | 'exotic' = 'fuel';
-          if (typeProb > 0.4) rType = 'biomass';
-          if (typeProb > 0.8) rType = 'exotic';
-
           planets.push({
               id: `p-${idCounter++}`,
               parentStarId: star.id,
@@ -44,7 +39,7 @@ const generatePlanets = (stars: Star[]): Planet[] => {
               orbitRadius: radius,
               orbitSpeed: speed,
               angle: angle * (180 / Math.PI), 
-              resourceType: rType,
+              resourceType: Math.random() > 0.8 ? 'exotic' : (Math.random() > 0.4 ? 'biomass' : 'fuel'),
               isAnchored: false,
               destroyed: false,
               isUnstable: false,
@@ -171,12 +166,10 @@ export const useGameLoop = () => {
             let nextReason: GameState['endReason'] = prev.endReason;
             if (prev.aiArk.engines >= 100 && prev.aiArk.lifeSupport >= 100 && prev.aiArk.warpCore >= 100) { nextPhase = 'defeat'; nextReason = 'ai_victory'; }
 
-            // FIXED: Explicitly set explosions to [] to flush the visual buffer
             return { ...prev, ships: finalShips, resources: newRes, aiResources: newAiRes, turnReport: turnEvents, phase: nextPhase, endReason: nextReason, turn: prev.turn + 1, actionPoints: MAX_AP, explosions: [] };
         }
 
         let newStars = prev.stars.map(s => ({ ...s, position: { ...s.position } }));
-        // FIXED: Increased decay rate to 0.05 to clear explosions faster
         let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.05 })).filter(e => e.opacity > 0);
         let isMerged = prev.isMerged;
         let newShips = prev.ships.map(s => ({ ...s }));
@@ -212,13 +205,12 @@ export const useGameLoop = () => {
 
         const currentDist = newStars[1].position.x - newStars[0].position.x;
         if (!isMerged) {
-            // FIXED: Increased star approach speed slightly (0.1) and expanded merge threshold (50)
-            if (currentDist > 50) {
-                newStars[0].position.x += 0.1;
-                newStars[1].position.x -= 0.1;
+            if (currentDist > 40) { // Threshold for collision
+                newStars[0].position.x += 0.12; 
+                newStars[1].position.x -= 0.12;
             } else {
                 isMerged = true;
-                turnEvents.push("STELLAR COLLISION: GRAVITY DESTABILIZED!");
+                turnEvents.push("THE STARS HAVE COLLIDED: THE SINGULARITY FORMS!");
             }
         }
 
@@ -236,23 +228,22 @@ export const useGameLoop = () => {
             const dSqB = dxB*dxB + dyB*dyB;
             const distB = Math.sqrt(dSqB);
 
-            const alphaPower = 1 + (Math.sin(frames * 0.05) * 0.15);
-            const betaPower = 1 + (Math.cos(frames * 0.05) * 0.15);
+            const alphaPower = 1 + (Math.sin(frames * 0.05) * 0.20);
+            const betaPower = 1 + (Math.cos(frames * 0.05) * 0.20);
 
             const fAx = (dxA / distA) * (G_CONSTANT * newStars[0].radius * alphaPower / dSqA);
             const fAy = (dyA / distA) * (G_CONSTANT * newStars[0].radius * alphaPower / dSqA);
             const fBx = (dxB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
             const fBy = (dyB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
 
-            const nVx = (planet.vx + fAx + fBx);
-            const nVy = (planet.vy + fAy + fBy);
+            const nVx = planet.vx + fAx + fBx;
+            const nVy = planet.vy + fAy + fBy;
             const nX = planet.x + nVx;
             const nY = planet.y + nVy;
 
             for (const s of newStars) {
                 if (Math.hypot(nX - s.position.x, nY - s.position.y) < s.deathRadius) {
-                    if (!planet.destroyed) turnEvents.push(`CATASTROPHIC: ${planet.id} consumed!`);
-                    newExplosions.push({ id: `exp-${planet.id}`, x: nX, y: nY, radius: 10, opacity: 1, color: '#f59e0b' });
+                    newExplosions.push({ id: `exp-${planet.id}-${frames}`, x: nX, y: nY, radius: 10, opacity: 1, color: '#f59e0b' });
                     return { ...planet, destroyed: true, x: nX, y: nY };
                 }
             }
@@ -263,16 +254,9 @@ export const useGameLoop = () => {
         for (let i = 0; i < updatedPlanets.length; i++) {
             for (let j = i + 1; j < updatedPlanets.length; j++) {
                 const p1 = updatedPlanets[i]; const p2 = updatedPlanets[j];
-                if ((p1.destroyed && !p1.isDebris) || (p2.destroyed && !p2.isDebris)) continue;
+                if (p1.destroyed || p2.destroyed) continue;
                 if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 14) {
-                    if (!p1.isDebris || !p2.isDebris) {
-                        const msg = `IMPACT: ${p1.id} hit ${p2.id}`;
-                        if (!turnEvents.includes(msg)) turnEvents.push(msg);
-                    }
-                    newShips = newShips.filter(s => s.location !== p1.id && s.location !== p2.id);
-                    p1.isDebris = true; p1.destroyed = false;
-                    p2.isDebris = true; p2.destroyed = false;
-                    // Add collision explosion
+                    p1.isDebris = true; p2.isDebris = true;
                     newExplosions.push({ id: `exp-col-${i}-${j}`, x: p1.x, y: p1.y, radius: 8, opacity: 1, color: '#94a3b8' });
                 }
             }
