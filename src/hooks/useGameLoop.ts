@@ -8,13 +8,11 @@ const MINER_COST = { fuel: 10, biomass: 10 };
 const FIGHTER_COST = { fuel: 20, exotic: 10 }; 
 const WARP_COST = 50; 
 const MINING_RATE = 10;
-// TUNED: Lowered gravity slightly for wider, more stable orbits
 const G_CONSTANT = 0.35; 
 
 export const isPlanetMineable = (planet: Planet) => !planet.destroyed;
 
 const getInitialStars = (): Star[] => [
-    // TUNED: Shrunk deathRadius to be closer to the visual surface
     { id: 'alpha', position: { x: 300, y: 400 }, radius: 60, deathRadius: 62, color: '#ef4444', rotationSpeed: -0.1, currentAngle: 0 }, 
     { id: 'beta', position: { x: 900, y: 400 }, radius: 55, deathRadius: 57, color: '#3b82f6', rotationSpeed: 0.15, currentAngle: 0 },
 ];
@@ -29,8 +27,6 @@ const generatePlanets = (stars: Star[]): Planet[] => {
           const angle = Math.random() * Math.PI * 2;
           const x = star.position.x + radius * Math.cos(angle);
           const y = star.position.y + radius * Math.sin(angle);
-          
-          // v = sqrt(GM/r)
           const speed = Math.sqrt((G_CONSTANT * star.radius) / radius);
           const direction = star.id === 'alpha' ? -1 : 1;
           const vx = -(Math.sin(angle)) * speed * direction;
@@ -175,11 +171,13 @@ export const useGameLoop = () => {
             let nextReason: GameState['endReason'] = prev.endReason;
             if (prev.aiArk.engines >= 100 && prev.aiArk.lifeSupport >= 100 && prev.aiArk.warpCore >= 100) { nextPhase = 'defeat'; nextReason = 'ai_victory'; }
 
+            // FIXED: Explicitly set explosions to [] to flush the visual buffer
             return { ...prev, ships: finalShips, resources: newRes, aiResources: newAiRes, turnReport: turnEvents, phase: nextPhase, endReason: nextReason, turn: prev.turn + 1, actionPoints: MAX_AP, explosions: [] };
         }
 
         let newStars = prev.stars.map(s => ({ ...s, position: { ...s.position } }));
-        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.02 })).filter(e => e.opacity > 0);
+        // FIXED: Increased decay rate to 0.05 to clear explosions faster
+        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.05 })).filter(e => e.opacity > 0);
         let isMerged = prev.isMerged;
         let newShips = prev.ships.map(s => ({ ...s }));
 
@@ -214,9 +212,10 @@ export const useGameLoop = () => {
 
         const currentDist = newStars[1].position.x - newStars[0].position.x;
         if (!isMerged) {
-            if (currentDist > 20) {
-                newStars[0].position.x += 0.05;
-                newStars[1].position.x -= 0.05;
+            // FIXED: Increased star approach speed slightly (0.1) and expanded merge threshold (50)
+            if (currentDist > 50) {
+                newStars[0].position.x += 0.1;
+                newStars[1].position.x -= 0.1;
             } else {
                 isMerged = true;
                 turnEvents.push("STELLAR COLLISION: GRAVITY DESTABILIZED!");
@@ -245,7 +244,6 @@ export const useGameLoop = () => {
             const fBx = (dxB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
             const fBy = (dyB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
 
-            // TUNED: Removed 0.999 friction multiplier to prevent orbital decay
             const nVx = (planet.vx + fAx + fBx);
             const nVy = (planet.vy + fAy + fBy);
             const nX = planet.x + nVx;
@@ -274,6 +272,8 @@ export const useGameLoop = () => {
                     newShips = newShips.filter(s => s.location !== p1.id && s.location !== p2.id);
                     p1.isDebris = true; p1.destroyed = false;
                     p2.isDebris = true; p2.destroyed = false;
+                    // Add collision explosion
+                    newExplosions.push({ id: `exp-col-${i}-${j}`, x: p1.x, y: p1.y, radius: 8, opacity: 1, color: '#94a3b8' });
                 }
             }
         }
