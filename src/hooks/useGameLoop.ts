@@ -163,7 +163,7 @@ export const useGameLoop = () => {
         }
 
         let newStars = prev.stars.map(s => ({ ...s, position: { ...s.position } }));
-        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.4, opacity: e.opacity - 0.05 })).filter(e => e.opacity > 0);
+        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.05 })).filter(e => e.opacity > 0);
         let isMerged = prev.isMerged; let newShips = prev.ships.map(s => ({ ...s }));
 
         const currentDist = newStars[1].position.x - newStars[0].position.x;
@@ -212,19 +212,24 @@ export const useGameLoop = () => {
             for (const s of newStars) {
                 if (Math.hypot(nX - s.position.x, nY - s.position.y) < s.deathRadius) {
                     newExplosions.push({ id: `exp-${planet.id}-${frames}`, x: nX, y: nY, radius: 10, opacity: 1, color: '#f59e0b' });
-                    return { ...planet, destroyed: true, x: nX, y: nY };
+                    // Fix: Set isDebris to false when consumed to ensure it is actually destroyed
+                    return { ...planet, destroyed: true, isDebris: false, x: nX, y: nY };
                 }
             }
             return { ...planet, x: nX, y: nY, vx: nVx, vy: nVy, parentStarId: distA < distB ? 'alpha' : 'beta', isUnstable: distA < 140 || distB < 140 };
         });
 
+        // Inter-planet collisions
         for (let i = 0; i < updatedPlanets.length; i++) {
             for (let j = i + 1; j < updatedPlanets.length; j++) {
                 const p1 = updatedPlanets[i]; const p2 = updatedPlanets[j];
                 if (p1.destroyed || p2.destroyed) continue;
                 if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 14) {
+                    // Fix: Add unique IDs to collision smoke to ensure decay
+                    if (!p1.isDebris || !p2.isDebris) {
+                        newExplosions.push({ id: `exp-col-${i}-${j}-${frames}`, x: p1.x, y: p1.y, radius: 8, opacity: 1, color: '#94a3b8' });
+                    }
                     p1.isDebris = true; p2.isDebris = true;
-                    newExplosions.push({ id: `exp-col-${i}-${j}`, x: p1.x, y: p1.y, radius: 8, opacity: 1, color: '#94a3b8' });
                 }
             }
         }
