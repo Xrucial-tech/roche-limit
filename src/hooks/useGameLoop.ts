@@ -9,8 +9,8 @@ const FIGHTER_COST = { fuel: 20, exotic: 10 };
 const WARP_COST = 50; 
 const MINING_RATE = 10;
 const G_CONSTANT = 0.35; 
-const MAX_VELOCITY = 7; // Prevent planets from reaching escape velocity
-const STELLAR_APPROACH_SPEED = 0.03; // Slowed approach for better pacing
+const MAX_VELOCITY = 7; 
+const STELLAR_APPROACH_SPEED = 0.03; 
 
 export const isPlanetMineable = (planet: Planet) => !planet.destroyed;
 
@@ -181,10 +181,10 @@ export const useGameLoop = () => {
             if (planet.isAnchored) return planet;
 
             const dxA = newStars[0].position.x - planet.x; const dyA = newStars[0].position.y - planet.y;
-            const dSqA = Math.max(dxA*dxA + dyA*dyA, 500); // Gravity Floor
+            const dSqA = Math.max(dxA*dxA + dyA*dyA, 500); 
             const distA = Math.sqrt(dSqA);
             const dxB = newStars[1].position.x - planet.x; const dyB = newStars[1].position.y - planet.y;
-            const dSqB = Math.max(dxB*dxB + dyB*dyB, 500); // Gravity Floor
+            const dSqB = Math.max(dxB*dxB + dyB*dyB, 500); 
             const distB = Math.sqrt(dSqB);
 
             const alphaPower = 1 + (Math.sin(frames * 0.05) * 0.20);
@@ -198,7 +198,6 @@ export const useGameLoop = () => {
             let nVx = planet.vx + fAx + fBx; 
             let nVy = planet.vy + fAy + fBy;
 
-            // Speed Limit
             const currentSpeed = Math.sqrt(nVx * nVx + nVy * nVy);
             if (currentSpeed > MAX_VELOCITY) {
                 nVx = (nVx / currentSpeed) * MAX_VELOCITY;
@@ -207,7 +206,6 @@ export const useGameLoop = () => {
 
             let nX = planet.x + nVx; let nY = planet.y + nVy;
 
-            // Boundary Bounce logic
             if (nX < 0 || nX > 1200) { nVx *= -0.5; nX = nX < 0 ? 5 : 1195; }
             if (nY < 0 || nY > 800) { nVy *= -0.5; nY = nY < 0 ? 5 : 795; }
 
@@ -220,7 +218,6 @@ export const useGameLoop = () => {
             return { ...planet, x: nX, y: nY, vx: nVx, vy: nVy, parentStarId: distA < distB ? 'alpha' : 'beta', isUnstable: distA < 140 || distB < 140 };
         });
 
-        // Inter-planet collisions
         for (let i = 0; i < updatedPlanets.length; i++) {
             for (let j = i + 1; j < updatedPlanets.length; j++) {
                 const p1 = updatedPlanets[i]; const p2 = updatedPlanets[j];
