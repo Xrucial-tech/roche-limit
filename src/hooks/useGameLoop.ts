@@ -9,6 +9,8 @@ const FIGHTER_COST = { fuel: 20, exotic: 10 };
 const WARP_COST = 50; 
 const MINING_RATE = 10;
 const G_CONSTANT = 0.35; 
+const MAX_VELOCITY = 7; // Prevent planets from reaching escape velocity
+const STELLAR_APPROACH_SPEED = 0.03; // Slowed approach for better pacing
 
 export const isPlanetMineable = (planet: Planet) => !planet.destroyed;
 
@@ -36,14 +38,9 @@ const generatePlanets = (stars: Star[]): Planet[] => {
               id: `p-${idCounter++}`,
               parentStarId: star.id,
               x, y, vx, vy,
-              orbitRadius: radius,
-              orbitSpeed: speed,
-              angle: angle * (180 / Math.PI), 
+              orbitRadius: radius, orbitSpeed: speed, angle: angle * (180 / Math.PI), 
               resourceType: Math.random() > 0.8 ? 'exotic' : (Math.random() > 0.4 ? 'biomass' : 'fuel'),
-              isAnchored: false,
-              destroyed: false,
-              isUnstable: false,
-              isDebris: false
+              isAnchored: false, destroyed: false, isUnstable: false, isDebris: false
           });
       });
   });
@@ -54,7 +51,7 @@ const getInitialState = (): GameState => {
     const stars = getInitialStars();
     return {
         turn: 1, maxTurns: MAX_TURNS, phase: 'planning', endReason: null, actionPoints: MAX_AP,
-        gameMessage: "Commander, hostile signals detected.", log: ["Mission Start."], turnReport: null,
+        gameMessage: "Commander, stellar collision imminent.", log: ["Mission Start."], turnReport: null,
         isMerged: false, selectedPlanetId: null, resources: { fuel: 50, biomass: 50, exotic: 0 },
         ark: { engines: 0, lifeSupport: 0, warpCore: 0 },
         starbase: { position: {x:0, y:0}, orbitRadius: 280, angle: 135, parentStarId: 'alpha' }, 
@@ -80,8 +77,7 @@ export const useGameLoop = () => {
       if (prev.resources[cost.r] < cost.v) return { ...prev, gameMessage: "Insufficient Resources" }; 
       const newRes = { ...prev.resources }; newRes[cost.r] -= cost.v; 
       const newArk = { ...prev.ark }; newArk[part] += 20; 
-      let phase = prev.phase; 
-      let reason = prev.endReason;
+      let phase = prev.phase; let reason = prev.endReason;
       if (newArk.engines >= 100 && newArk.lifeSupport >= 100 && newArk.warpCore >= 100) { phase = 'victory'; reason = 'player_victory'; }
       return { ...prev, resources: newRes, ark: newArk, phase, endReason: reason, actionPoints: prev.actionPoints - 1 }; 
   });
@@ -134,9 +130,7 @@ export const useGameLoop = () => {
     let aiState = processAI(gameState, gameState.planets, gameState.ships);
     setGameState(prev => ({ ...prev, phase: 'resolving', gameMessage: "Simulating Dynamics...", ships: aiState.ships, aiResources: aiState.resources, aiArk: aiState.ark }));
 
-    let frames = 0;
-    const maxFrames = 200;
-    let turnEvents: string[] = []; 
+    let frames = 0; const maxFrames = 200; let turnEvents: string[] = []; 
 
     const animate = () => {
       setGameState(prev => {
@@ -148,8 +142,7 @@ export const useGameLoop = () => {
                 return ship;
             });
 
-            let newRes = { ...prev.resources };
-            let newAiRes = { ...prev.aiResources };
+            let newRes = { ...prev.resources }; let newAiRes = { ...prev.aiResources };
             finalShips.forEach(ship => {
                 if (ship.status === 'deployed' && ship.location && ship.type === 'miner') {
                     const planet = prev.planets.find(p => p.id === ship.location);
@@ -170,47 +163,16 @@ export const useGameLoop = () => {
         }
 
         let newStars = prev.stars.map(s => ({ ...s, position: { ...s.position } }));
-        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.05 })).filter(e => e.opacity > 0);
-        let isMerged = prev.isMerged;
-        let newShips = prev.ships.map(s => ({ ...s }));
-
-        newShips.forEach(ship => {
-            if (ship.status === 'traveling_out' || ship.status === 'traveling_back') {
-                ship.travelProgress = Math.min(ship.travelProgress + 0.5, 100);
-                if (ship.status === 'traveling_out' && !isMerged) {
-                    const planet = prev.planets.find(p => p.id === ship.location);
-                    if (planet) {
-                        const isCrossSystem = (ship.owner === 'player' && planet.parentStarId === 'beta') || (ship.owner === 'ai' && planet.parentStarId === 'alpha');
-                        if (isCrossSystem && Math.random() < 0.001) {
-                            ship.status = 'traveling_back';
-                            ship.travelProgress = 100 - ship.travelProgress;
-                            const msg = `GRAVITY SHEAR: ${ship.owner.toUpperCase()} ${ship.type} forced to retreat!`;
-                            if (!turnEvents.includes(msg)) turnEvents.push(msg);
-                        }
-                    }
-                }
-                if (ship.type === 'fighter' && ship.status === 'traveling_out' && ship.travelProgress >= 100) {
-                    const targets = newShips.filter(t => t.location === ship.location && t.status === 'deployed' && t.owner !== ship.owner);
-                    targets.forEach(t => {
-                        t.id = "DESTROYED";
-                        const msg = `COMBAT: Fighter ${ship.id} destroyed ${t.owner.toUpperCase()} ${t.type}`;
-                        if (!turnEvents.includes(msg)) turnEvents.push(msg);
-                        const p = prev.planets.find(pl => pl.id === ship.location);
-                        if (p) newExplosions.push({ id: `exp-${Math.random()}`, x: p.x, y: p.y, radius: 5, opacity: 1, color: '#ef4444' });
-                    });
-                }
-            }
-        });
-        newShips = newShips.filter(s => s.id !== "DESTROYED");
+        let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.4, opacity: e.opacity - 0.05 })).filter(e => e.opacity > 0);
+        let isMerged = prev.isMerged; let newShips = prev.ships.map(s => ({ ...s }));
 
         const currentDist = newStars[1].position.x - newStars[0].position.x;
         if (!isMerged) {
-            if (currentDist > 40) { // Threshold for collision
-                newStars[0].position.x += 0.12; 
-                newStars[1].position.x -= 0.12;
+            if (currentDist > 40) {
+                newStars[0].position.x += STELLAR_APPROACH_SPEED; 
+                newStars[1].position.x -= STELLAR_APPROACH_SPEED;
             } else {
-                isMerged = true;
-                turnEvents.push("THE STARS HAVE COLLIDED: THE SINGULARITY FORMS!");
+                isMerged = true; turnEvents.push("THE STARS HAVE COLLIDED: THE SINGULARITY FORMS!");
             }
         }
 
@@ -218,14 +180,11 @@ export const useGameLoop = () => {
             if (planet.destroyed && !planet.isDebris) return planet;
             if (planet.isAnchored) return planet;
 
-            const dxA = newStars[0].position.x - planet.x;
-            const dyA = newStars[0].position.y - planet.y;
-            const dSqA = dxA*dxA + dyA*dyA;
+            const dxA = newStars[0].position.x - planet.x; const dyA = newStars[0].position.y - planet.y;
+            const dSqA = Math.max(dxA*dxA + dyA*dyA, 500); // Gravity Floor
             const distA = Math.sqrt(dSqA);
-
-            const dxB = newStars[1].position.x - planet.x;
-            const dyB = newStars[1].position.y - planet.y;
-            const dSqB = dxB*dxB + dyB*dyB;
+            const dxB = newStars[1].position.x - planet.x; const dyB = newStars[1].position.y - planet.y;
+            const dSqB = Math.max(dxB*dxB + dyB*dyB, 500); // Gravity Floor
             const distB = Math.sqrt(dSqB);
 
             const alphaPower = 1 + (Math.sin(frames * 0.05) * 0.20);
@@ -236,10 +195,21 @@ export const useGameLoop = () => {
             const fBx = (dxB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
             const fBy = (dyB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
 
-            const nVx = planet.vx + fAx + fBx;
-            const nVy = planet.vy + fAy + fBy;
-            const nX = planet.x + nVx;
-            const nY = planet.y + nVy;
+            let nVx = planet.vx + fAx + fBx; 
+            let nVy = planet.vy + fAy + fBy;
+
+            // Speed Limit
+            const currentSpeed = Math.sqrt(nVx * nVx + nVy * nVy);
+            if (currentSpeed > MAX_VELOCITY) {
+                nVx = (nVx / currentSpeed) * MAX_VELOCITY;
+                nVy = (nVy / currentSpeed) * MAX_VELOCITY;
+            }
+
+            let nX = planet.x + nVx; let nY = planet.y + nVy;
+
+            // Boundary Bounce logic
+            if (nX < 0 || nX > 1200) { nVx *= -0.5; nX = nX < 0 ? 5 : 1195; }
+            if (nY < 0 || nY > 800) { nVy *= -0.5; nY = nY < 0 ? 5 : 795; }
 
             for (const s of newStars) {
                 if (Math.hypot(nX - s.position.x, nY - s.position.y) < s.deathRadius) {
@@ -247,10 +217,10 @@ export const useGameLoop = () => {
                     return { ...planet, destroyed: true, x: nX, y: nY };
                 }
             }
-
             return { ...planet, x: nX, y: nY, vx: nVx, vy: nVy, parentStarId: distA < distB ? 'alpha' : 'beta', isUnstable: distA < 140 || distB < 140 };
         });
 
+        // Inter-planet collisions
         for (let i = 0; i < updatedPlanets.length; i++) {
             for (let j = i + 1; j < updatedPlanets.length; j++) {
                 const p1 = updatedPlanets[i]; const p2 = updatedPlanets[j];
@@ -264,8 +234,7 @@ export const useGameLoop = () => {
 
         return { ...prev, stars: newStars, planets: updatedPlanets, ships: newShips, explosions: newExplosions, isMerged };
       });
-      frames++;
-      animationRef.current = requestAnimationFrame(animate);
+      frames++; animationRef.current = requestAnimationFrame(animate);
     };
     animate();
   };
