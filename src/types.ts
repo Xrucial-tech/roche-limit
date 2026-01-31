@@ -12,10 +12,16 @@ export interface Star {
 
 export interface Planet {
   id: string;
+  parentStarId: string;
+  // REQUIRED FOR VECTOR PHYSICS:
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  // EXISTING PROPERTIES:
   orbitRadius: number;
   orbitSpeed: number;
   angle: number;
-  parentStarId: string;
   resourceType: 'fuel' | 'biomass' | 'exotic';
   isAnchored: boolean;
   destroyed: boolean;
@@ -32,7 +38,6 @@ export interface Ship {
   travelProgress: number; 
 }
 
-// NEW: Explosion Effect Type
 export interface Explosion {
   id: string;
   x: number;
@@ -45,13 +50,14 @@ export interface Explosion {
 export interface GameState {
   turn: number;
   maxTurns: number;
+  // Ensure these strings exactly match your logic in useGameLoop
   phase: 'planning' | 'resolving' | 'results' | 'game_over' | 'victory' | 'defeat';
   endReason: 'ai_victory' | 'singularity' | 'player_victory' | null;
   actionPoints: number;
   stars: Star[];
   planets: Planet[];
   ships: Ship[];
-  explosions: Explosion[]; // NEW
+  explosions: Explosion[];
   starbase: { position: Point; orbitRadius: number; angle: number; parentStarId: string }; 
   aiStarbase: { position: Point; orbitRadius: number; angle: number; parentStarId: string };
   
