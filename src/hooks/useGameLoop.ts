@@ -10,6 +10,9 @@ const WARP_COST = 50;
 const MINING_RATE = 10;
 const G_CONSTANT = 0.5;
 
+// FIXED: Exported for PlanetMenu.tsx
+export const isPlanetMineable = (planet: Planet) => !planet.destroyed;
+
 const getInitialStars = (): Star[] => [
     { id: 'alpha', position: { x: 300, y: 400 }, radius: 60, deathRadius: 75, color: '#ef4444', rotationSpeed: -0.1, currentAngle: 0 }, 
     { id: 'beta', position: { x: 900, y: 400 }, radius: 55, deathRadius: 70, color: '#3b82f6', rotationSpeed: 0.15, currentAngle: 0 },
@@ -76,7 +79,7 @@ export const useGameLoop = () => {
   const [gameState, setGameState] = useState<GameState>(getInitialState());
   const animationRef = useRef<number>(0);
 
-  // --- RECONSTRUCTED ACTIONS ---
+  // --- ACTIONS ---
   const buildArkPart = (part: 'engines' | 'lifeSupport' | 'warpCore') => setGameState(prev => { 
       if (prev.actionPoints < 1 || prev.ark[part] >= 100) return prev; 
       const costs: Record<string, {r: 'fuel' | 'biomass' | 'exotic', v: number}> = { engines: {r:'fuel', v:20}, lifeSupport: {r:'biomass', v:20}, warpCore: {r:'exotic', v:10} }; 
@@ -167,8 +170,9 @@ export const useGameLoop = () => {
                 }
             });
 
-            let nextPhase = (prev.turn >= prev.maxTurns) ? 'game_over' : 'results';
-            let nextReason = prev.endReason;
+            // FIXED: Explicit type casting for literals
+            let nextPhase: GameState['phase'] = (prev.turn >= prev.maxTurns) ? 'game_over' : 'results';
+            let nextReason: GameState['endReason'] = prev.endReason;
             if (prev.aiArk.engines >= 100 && prev.aiArk.lifeSupport >= 100 && prev.aiArk.warpCore >= 100) { nextPhase = 'defeat'; nextReason = 'ai_victory'; }
 
             return { ...prev, ships: finalShips, resources: newRes, aiResources: newAiRes, turnReport: turnEvents, phase: nextPhase, endReason: nextReason, turn: prev.turn + 1, actionPoints: MAX_AP, explosions: [] };
