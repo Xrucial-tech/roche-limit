@@ -8,14 +8,15 @@ const MINER_COST = { fuel: 10, biomass: 10 };
 const FIGHTER_COST = { fuel: 20, exotic: 10 }; 
 const WARP_COST = 50; 
 const MINING_RATE = 10;
-const G_CONSTANT = 0.5;
+// TUNED: Lowered gravity slightly for wider, more stable orbits
+const G_CONSTANT = 0.35; 
 
-// FIXED: Exported for PlanetMenu.tsx
 export const isPlanetMineable = (planet: Planet) => !planet.destroyed;
 
 const getInitialStars = (): Star[] => [
-    { id: 'alpha', position: { x: 300, y: 400 }, radius: 60, deathRadius: 75, color: '#ef4444', rotationSpeed: -0.1, currentAngle: 0 }, 
-    { id: 'beta', position: { x: 900, y: 400 }, radius: 55, deathRadius: 70, color: '#3b82f6', rotationSpeed: 0.15, currentAngle: 0 },
+    // TUNED: Shrunk deathRadius to be closer to the visual surface
+    { id: 'alpha', position: { x: 300, y: 400 }, radius: 60, deathRadius: 62, color: '#ef4444', rotationSpeed: -0.1, currentAngle: 0 }, 
+    { id: 'beta', position: { x: 900, y: 400 }, radius: 55, deathRadius: 57, color: '#3b82f6', rotationSpeed: 0.15, currentAngle: 0 },
 ];
 
 const generatePlanets = (stars: Star[]): Planet[] => {
@@ -28,6 +29,8 @@ const generatePlanets = (stars: Star[]): Planet[] => {
           const angle = Math.random() * Math.PI * 2;
           const x = star.position.x + radius * Math.cos(angle);
           const y = star.position.y + radius * Math.sin(angle);
+          
+          // v = sqrt(GM/r)
           const speed = Math.sqrt((G_CONSTANT * star.radius) / radius);
           const direction = star.id === 'alpha' ? -1 : 1;
           const vx = -(Math.sin(angle)) * speed * direction;
@@ -79,7 +82,6 @@ export const useGameLoop = () => {
   const [gameState, setGameState] = useState<GameState>(getInitialState());
   const animationRef = useRef<number>(0);
 
-  // --- ACTIONS ---
   const buildArkPart = (part: 'engines' | 'lifeSupport' | 'warpCore') => setGameState(prev => { 
       if (prev.actionPoints < 1 || prev.ark[part] >= 100) return prev; 
       const costs: Record<string, {r: 'fuel' | 'biomass' | 'exotic', v: number}> = { engines: {r:'fuel', v:20}, lifeSupport: {r:'biomass', v:20}, warpCore: {r:'exotic', v:10} }; 
@@ -136,7 +138,6 @@ export const useGameLoop = () => {
   const toggleAnchor = (planetId: string) => setGameState(prev => { if (prev.actionPoints < 1) return prev; return { ...prev, actionPoints: prev.actionPoints - 1, planets: prev.planets.map(p => p.id === planetId ? { ...p, isAnchored: !p.isAnchored } : p) }; }); 
   const closeReport = () => setGameState(prev => ({ ...prev, phase: 'planning', turnReport: null }));
 
-  // --- RECONSTRUCTED ENGINE ---
   const commitTurn = () => {
     if (gameState.phase !== 'planning') return;
     let aiState = processAI(gameState, gameState.planets, gameState.ships);
@@ -170,7 +171,6 @@ export const useGameLoop = () => {
                 }
             });
 
-            // FIXED: Explicit type casting for literals
             let nextPhase: GameState['phase'] = (prev.turn >= prev.maxTurns) ? 'game_over' : 'results';
             let nextReason: GameState['endReason'] = prev.endReason;
             if (prev.aiArk.engines >= 100 && prev.aiArk.lifeSupport >= 100 && prev.aiArk.warpCore >= 100) { nextPhase = 'defeat'; nextReason = 'ai_victory'; }
@@ -178,18 +178,14 @@ export const useGameLoop = () => {
             return { ...prev, ships: finalShips, resources: newRes, aiResources: newAiRes, turnReport: turnEvents, phase: nextPhase, endReason: nextReason, turn: prev.turn + 1, actionPoints: MAX_AP, explosions: [] };
         }
 
-        // --- PHYSICS & LOGIC LOOP ---
         let newStars = prev.stars.map(s => ({ ...s, position: { ...s.position } }));
         let newExplosions = prev.explosions.map(e => ({ ...e, radius: e.radius + 0.5, opacity: e.opacity - 0.02 })).filter(e => e.opacity > 0);
         let isMerged = prev.isMerged;
         let newShips = prev.ships.map(s => ({ ...s }));
 
-        // 1. Ship Movement & Combat Logic
         newShips.forEach(ship => {
             if (ship.status === 'traveling_out' || ship.status === 'traveling_back') {
                 ship.travelProgress = Math.min(ship.travelProgress + 0.5, 100);
-                
-                // Gravity Shear Check
                 if (ship.status === 'traveling_out' && !isMerged) {
                     const planet = prev.planets.find(p => p.id === ship.location);
                     if (planet) {
@@ -202,8 +198,6 @@ export const useGameLoop = () => {
                         }
                     }
                 }
-
-                // Combat Logic
                 if (ship.type === 'fighter' && ship.status === 'traveling_out' && ship.travelProgress >= 100) {
                     const targets = newShips.filter(t => t.location === ship.location && t.status === 'deployed' && t.owner !== ship.owner);
                     targets.forEach(t => {
@@ -218,7 +212,6 @@ export const useGameLoop = () => {
         });
         newShips = newShips.filter(s => s.id !== "DESTROYED");
 
-        // 2. Star Movement
         const currentDist = newStars[1].position.x - newStars[0].position.x;
         if (!isMerged) {
             if (currentDist > 20) {
@@ -230,7 +223,6 @@ export const useGameLoop = () => {
             }
         }
 
-        // 3. Planet Vector Physics
         let updatedPlanets = prev.planets.map(planet => {
             if (planet.destroyed && !planet.isDebris) return planet;
             if (planet.isAnchored) return planet;
@@ -253,12 +245,12 @@ export const useGameLoop = () => {
             const fBx = (dxB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
             const fBy = (dyB / distB) * (G_CONSTANT * newStars[1].radius * betaPower / dSqB);
 
-            const nVx = (planet.vx + fAx + fBx) * 0.999;
-            const nVy = (planet.vy + fAy + fBy) * 0.999;
+            // TUNED: Removed 0.999 friction multiplier to prevent orbital decay
+            const nVx = (planet.vx + fAx + fBx);
+            const nVy = (planet.vy + fAy + fBy);
             const nX = planet.x + nVx;
             const nY = planet.y + nVy;
 
-            // Collision Check
             for (const s of newStars) {
                 if (Math.hypot(nX - s.position.x, nY - s.position.y) < s.deathRadius) {
                     if (!planet.destroyed) turnEvents.push(`CATASTROPHIC: ${planet.id} consumed!`);
@@ -270,7 +262,6 @@ export const useGameLoop = () => {
             return { ...planet, x: nX, y: nY, vx: nVx, vy: nVy, parentStarId: distA < distB ? 'alpha' : 'beta', isUnstable: distA < 140 || distB < 140 };
         });
 
-        // 4. Inter-Planet Collision Loop (Debris Creation)
         for (let i = 0; i < updatedPlanets.length; i++) {
             for (let j = i + 1; j < updatedPlanets.length; j++) {
                 const p1 = updatedPlanets[i]; const p2 = updatedPlanets[j];
